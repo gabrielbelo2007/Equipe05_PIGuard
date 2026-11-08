@@ -50,7 +50,7 @@ except ImportError:
 
 # Importar arquitetura local do PIGuard se disponível
 try:
-    from PIGuard import PIGuard
+    from original.PIGuard import PIGuard
 except ImportError:
     class PIGuard(nn.Module):
         def __init__(self, model_name: str, num_labels: int, device: Any):
@@ -896,9 +896,7 @@ def main():
         else:
             print(f"[AVISO] Checkpoint para '{disp_name}' não encontrado e sem cache.")
 
-    # ==========================================================================
     # ETAPA 4: Apresentação e Exportação dos Resultados
-    # ==========================================================================
     table_text = format_table(all_table_results)
     print("\n" + table_text + "\n")
 
