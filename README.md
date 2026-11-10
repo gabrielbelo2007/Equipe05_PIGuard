@@ -129,13 +129,13 @@ Durante o processo de reprodução, atente-se aos seguintes pontos críticos:
     <td align="center">
       <a href="https://github.com/gabrielbelo2007">
         <img src="https://avatars.githubusercontent.com/u/91219977?v=4" width="80px;" alt="Gabriel"/><br>
-        <sub><b>Sophia Santos</b></sub>
+        <sub><b>Gabriel Belo</b></sub>
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/LHFalcao">
         <img src="https://avatars.githubusercontent.com/u/211526897?v=4" width="80px;" alt="Luiz"/><br>
-        <sub><b>Sophia Santos</b></sub>
+        <sub><b>Luiz Falcão</b></sub>
       </a>
     </td>
   </tr>
