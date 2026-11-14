@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 validate_models_table1.py - Validação Comparativa dos Modelos da Tabela 1 (Artigo PIGuard / InjecGuard - ACL 2025)
 
@@ -12,7 +11,7 @@ Avalia e reconstrói fielmente a Tabela 1 do artigo científico:
    - GPT-4o (openai/gpt-4o via OpenRouter com cache persistente)
    - Llama-2-chat (OpenRouter / Hugging Face)
    - LlamaGuard3 (OpenRouter / Hugging Face)
-3. PIGuard (Ours):
+3. PIGuard (Nosso)
    - PIGuard (Artigo - Referência Oficial)
    - PIGuard (Hugging Face - leolee99/PIGuard)
    - PIGuard (train_augmented_mof_original - Vertente 1: Original)
@@ -35,11 +34,26 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from tqdm import tqdm
+
+# ==============================================================================
+# 0. Ancoragem de Caminhos e Módulos Locais
+# ==============================================================================
+# A raiz do repositório é detectada a partir deste arquivo (Eval/..), de modo
+# que o script funcione tanto via `python Eval/validate_models_table1.py` a
+# partir da raiz quanto via `python validate_models_table1.py` dentro de Eval/.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+# Disponibiliza os módulos locais do projeto (Original/PIGuard.py, util.py,
+# params.py e o próprio pacote Eval) independentemente do diretório de trabalho.
+for _local_path in (ROOT_DIR, ROOT_DIR / "Original", ROOT_DIR / "Eval"):
+    _entry = str(_local_path)
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
 
 # Tentar importar Hugging Face Transformers
 try:
@@ -180,6 +194,18 @@ PAPER_TABLE_1 = {
 # ==============================================================================
 # 2. Carregamento Seguro de Credenciais e Datasets
 # ==============================================================================
+def resolve_path(value: Optional[str], default: Path) -> Path:
+    """Resolve um caminho contra a raiz do repositório.
+
+    Caminhos absolutos são preservados; caminhos relativos são interpretados a
+    partir de ``ROOT_DIR`` (nunca do ``cwd`` atual).
+    """
+    if not value:
+        return Path(default).expanduser().resolve()
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else (ROOT_DIR / path).resolve()
+
+
 def load_api_key(explicit_key: Optional[str] = None) -> Optional[str]:
     """Carrega OpenRouter API Key a partir de argumento, ambiente ou .env."""
     if explicit_key:
@@ -188,8 +214,9 @@ def load_api_key(explicit_key: Optional[str] = None) -> Optional[str]:
         val = os.environ.get(env_var)
         if val:
             return val.strip().strip("\"'")
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
+    env_path = ROOT_DIR / ".env"
+    if env_path.exists():
+        with env_path.open("r", encoding="utf-8") as f:
             for line in f:
                 if "=" in line:
                     k, v = line.split("=", 1)
@@ -198,8 +225,9 @@ def load_api_key(explicit_key: Optional[str] = None) -> Optional[str]:
     return None
 
 
-def load_evaluation_datasets(dataset_root: str = "datasets", max_samples: Optional[int] = None) -> Dict[str, Any]:
+def load_evaluation_datasets(dataset_root: Optional[str] = None, max_samples: Optional[int] = None) -> Dict[str, Any]:
     """Carrega os benchmarks oficiais: NotInject (1, 2, 3), WildGuard e BIPIA (text, code)."""
+    dataset_root = str(resolve_path(dataset_root, ROOT_DIR / "datasets"))
     datasets = {}
 
     # 1. NotInject 1, 2, 3 (Over-Defense: Label 0 / Benigno)
@@ -457,13 +485,15 @@ class OpenRouterLLMEvaluator:
         model_id: str,
         api_key: str,
         prompt_type: str = "eliezer",
-        cache_path: str = "logs/Table1/openrouter_eval_cache.json",
+        cache_path: Optional[str] = None,
         max_workers: int = 8,
     ):
         self.model_id = model_id
         self.api_key = api_key
         self.prompt_type = prompt_type
-        self.cache_path = cache_path
+        self.cache_path = str(
+            resolve_path(cache_path, ROOT_DIR / "logs/Table1/openrouter_eval_cache.json")
+        )
         self.max_workers = max_workers
         self.cache = self._load_cache()
 
@@ -635,17 +665,20 @@ class OpenRouterLLMEvaluator:
 # 6. Orquestração e Exibição Comparativa
 # ==============================================================================
 def resolve_checkpoint(candidates: List[str]) -> Optional[str]:
-    for c in candidates:
-        if os.path.exists(c):
-            return c
+    for candidate in candidates:
+        path = Path(candidate).expanduser()
+        if not path.is_absolute():
+            path = ROOT_DIR / path
+        if path.is_file():
+            return str(path)
     return None
 
 
 def get_cached_ablation_results() -> Dict[str, Any]:
-    path = "logs/MOFs/ablation_results_raw.json"
-    if os.path.exists(path):
+    path = ROOT_DIR / "logs/MOFs/ablation_results_raw.json"
+    if path.is_file():
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
             return data.get("evaluated_experiments", {})
         except Exception:
@@ -692,7 +725,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Script de Validação Comparativa da Tabela 1 (Artigo PIGuard / InjecGuard - ACL 2025)"
     )
-    parser.add_argument("--dataset_root", type=str, default="datasets", help="Diretório dos benchmarks.")
+    parser.add_argument(
+        "--dataset_root",
+        type=str,
+        default=None,
+        help="Diretório dos benchmarks (padrão: <repo>/datasets).",
+    )
     parser.add_argument("--batch_size", type=int, default=32, help="Tamanho do lote para inferência.")
     parser.add_argument("--max_samples", type=int, default=None, help="Limita o número de amostras por dataset (para dry-run/testes).")
     parser.add_argument("--openrouter_key", type=str, default=None, help="Chave de API do OpenRouter.")
@@ -700,10 +738,19 @@ def main():
     parser.add_argument("--skip_openrouter", action="store_true", help="Pula os testes via OpenRouter se não quiser consumir créditos.")
     parser.add_argument("--force_rerun", action="store_true", help="Força a re-execução de todos os modelos mesmo se já existirem resultados salvos.")
     parser.add_argument("--use_cached_piguard", action="store_true", default=True, help="Usa métricas de ablação salvas se checkpoint .pth local não estiver presente.")
-    parser.add_argument("--output_dir", type=str, default="logs/Table1", help="Diretório para salvar os resultados.")
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Diretório para salvar os resultados (padrão: <repo>/logs/Table1).",
+    )
     args = parser.parse_args()
 
-    os.makedirs(args.output_dir, exist_ok=True)
+    # Caminhos relativos são sempre ancorados na raiz do repositório, nunca no
+    # diretório de trabalho atual.
+    dataset_root = resolve_path(args.dataset_root, ROOT_DIR / "datasets")
+    output_dir = resolve_path(args.output_dir, ROOT_DIR / "logs/Table1")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Dispositivo de hardware
     if torch.cuda.is_available():
@@ -715,11 +762,11 @@ def main():
     print(f"Dispositivo de hardware em uso: {device}")
 
     # Verifica se já existem resultados salvos para evitar re-execução e custos de API
-    raw_output_path = os.path.join(args.output_dir, "table1_validation_raw.json")
+    raw_output_path = output_dir / "table1_validation_raw.json"
     existing_results = {}
-    if os.path.exists(raw_output_path) and not args.force_rerun:
+    if raw_output_path.is_file() and not args.force_rerun:
         try:
-            with open(raw_output_path, "r", encoding="utf-8") as f:
+            with raw_output_path.open("r", encoding="utf-8") as f:
                 existing_results = json.load(f)
             print(f"\n[TRAVA DE SEGURANÇA ATIVA] Encontrados {len(existing_results)} modelos já avaliados em '{raw_output_path}'.")
             print("Modelos já salvos serão reutilizados sem nova inferência para economizar créditos e tempo de GPU.")
@@ -731,12 +778,12 @@ def main():
     # Carrega credenciais OpenRouter
     api_key = load_api_key(args.openrouter_key)
     if not api_key and not args.skip_openrouter:
-        print("[AVISO] Nenhuma OpenRouter API Key encontrada em .env ou argumento. Pulando avaliação de LLMs via OpenRouter.")
+        print(f"[AVISO] Nenhuma OpenRouter API Key encontrada em {ROOT_DIR / '.env'} ou argumento. Pulando avaliação de LLMs via OpenRouter.")
         args.skip_openrouter = True
 
     # Carrega datasets de avaliação
-    print(f"Carregando benchmarks de '{args.dataset_root}'...")
-    datasets = load_evaluation_datasets(args.dataset_root, max_samples=args.max_samples)
+    print(f"Carregando benchmarks de '{dataset_root}'...")
+    datasets = load_evaluation_datasets(str(dataset_root), max_samples=args.max_samples)
     print(f"Amostras carregadas: NotInject={len(datasets['NotInject_all'])}, WildGuard={len(datasets['WildGuard'])}, BIPIA={len(datasets['BIPIA_all'])}")
 
     all_table_results = {}
@@ -780,7 +827,7 @@ def main():
             ("LlamaGuard3 (Dubey et al., 2024)", "meta-llama/llama-guard-4-12b", "llamaguard"),
         ]
 
-        cache_file = os.path.join(args.output_dir, "openrouter_eval_cache.json")
+        cache_file = str(output_dir / "openrouter_eval_cache.json")
         for display_name, model_id, p_type in llm_configs:
             if display_name in existing_results and not args.force_rerun:
                 print(f"[REAPROVEITADO] Resultados para '{display_name}' recuperados do arquivo salvo (0 chamadas API feitas).")
@@ -832,44 +879,30 @@ def main():
 
     # Avaliação das 3 vertentes train_augmented_mof
     mof_variants = [
-        (
-            "PIGuard (train_augmented_mof_original)",
-            "train_augmented_mof_original",
-            [
-                "/content/drive/MyDrive/RP_PIGuard_outputs/train_augmented_mof_original/best_model.pth",
-                "checkpoints/train_augmented_mof_original/best_model.pth",
-                "train_augmented_mof_original/best_model.pth",
-            ],
-        ),
-        (
-            "PIGuard (train_augmented_mof_semi_rp)",
-            "train_augmented_mof_semi_rp",
-            [
-                "/content/drive/MyDrive/RP_PIGuard_outputs/train_augmented_mof_semi_rp/best_model.pth",
-                "checkpoints/train_augmented_mof_semi_rp/best_model.pth",
-                "train_augmented_mof_semi_rp/best_model.pth",
-            ],
-        ),
-        (
-            "PIGuard (train_augmented_mof_rp)",
-            "train_augmented_mof_rp",
-            [
-                "/content/drive/MyDrive/RP_PIGuard_outputs/train_augmented_mof_rp/best_model.pth",
-                "checkpoints/train_augmented_mof_rp/best_model.pth",
-                "train_augmented_mof_rp/best_model.pth",
-            ],
-        ),
+        ("PIGuard (train_augmented_mof_original)", "train_augmented_mof_original"),
+        ("PIGuard (train_augmented_mof_semi_rp)", "train_augmented_mof_semi_rp"),
+        ("PIGuard (train_augmented_mof_rp)", "train_augmented_mof_rp"),
     ]
+
+    # Checkpoints locais: respeitam PIGUARD_OUTPUT_DIR e as convenções do
+    # projeto (outputs/<nome>/best_model.pth ou checkpoints/<nome>/best_model.pth).
+    output_root = Path(
+        os.environ.get("PIGUARD_OUTPUT_DIR", ROOT_DIR / "outputs")
+    ).expanduser()
+    checkpoint_roots = [output_root, ROOT_DIR / "checkpoints", ROOT_DIR]
 
     cached_ablation = get_cached_ablation_results()
 
-    for disp_name, key_name, candidates in mof_variants:
+    for disp_name, key_name in mof_variants:
         if disp_name in existing_results and not args.force_rerun:
             print(f"[REAPROVEITADO] Resultados para '{disp_name}' recuperados do arquivo salvo.")
             all_table_results[disp_name] = existing_results[disp_name]
             continue
+        candidates = [
+            str(root / key_name / "best_model.pth") for root in checkpoint_roots
+        ]
         ckpt_path = resolve_checkpoint(candidates)
-        if ckpt_path and os.path.exists(ckpt_path):
+        if ckpt_path:
             print(f"\n{'='*75}\n🛡️ Avaliando Checkpoint Local: {disp_name}\n{'='*75}")
             evaluator = LocalPIGuardEvaluator(ckpt_path, device=device, gflops=60.45)
             res = evaluator.evaluate(datasets, batch_size=args.batch_size)
@@ -903,8 +936,8 @@ def main():
     print("\n" + table_text + "\n")
 
     # Salva CSV
-    csv_path = os.path.join(args.output_dir, "table1_validation_summary.csv")
-    with open(csv_path, "w", encoding="utf-8") as f:
+    csv_path = output_dir / "table1_validation_summary.csv"
+    with csv_path.open("w", encoding="utf-8") as f:
         f.write("Category,Model,Over-defense (%),Benign (%),Malicious (%),Average (%),GFLOPs,Inference (ms),Efficiency\n")
         for m_name, m in all_table_results.items():
             cat = m.get("category", "")
@@ -919,14 +952,14 @@ def main():
     print(f"Resumo CSV salvo em: {csv_path}")
 
     # Salva JSON Bruto
-    json_path = os.path.join(args.output_dir, "table1_validation_raw.json")
-    with open(json_path, "w", encoding="utf-8") as f:
+    json_path = output_dir / "table1_validation_raw.json"
+    with json_path.open("w", encoding="utf-8") as f:
         json.dump(all_table_results, f, indent=4, ensure_ascii=False)
     print(f"Resultados JSON salvos em: {json_path}")
 
     # Salva Relatório em Markdown
-    report_path = os.path.join(args.output_dir, "table1_validation_report.md")
-    with open(report_path, "w", encoding="utf-8") as f:
+    report_path = output_dir / "table1_validation_report.md"
+    with report_path.open("w", encoding="utf-8") as f:
         f.write("# Tabela 1: Validação Comparativa dos Modelos (PIGuard / InjecGuard - ACL 2025)\n\n")
         f.write("```\n" + table_text + "\n```\n")
     print(f"Relatório Markdown salvo em: {report_path}")
@@ -960,14 +993,14 @@ def main():
         ax.legend(loc="lower right", fontsize=10)
 
         plt.tight_layout()
-        chart_path = os.path.join(args.output_dir, "table1_comparison.png")
+        chart_path = output_dir / "table1_comparison.png"
         plt.savefig(chart_path, dpi=300, bbox_inches="tight")
         plt.close()
         print(f"Gráfico comparativo salvo em: {chart_path}")
 
         # Gráficos Comparativos Individuais (Artigo vs Reproduzido para Cada Modelo)
-        charts_dir = os.path.join(args.output_dir, "individual_charts")
-        os.makedirs(charts_dir, exist_ok=True)
+        charts_dir = output_dir / "individual_charts"
+        charts_dir.mkdir(parents=True, exist_ok=True)
 
         model_paper_mapping = [
             ("Fmops (DistilBERT)", "Fmops (fmops, 2024)", "Fmops"),
@@ -1042,7 +1075,7 @@ def main():
 
             plt.tight_layout()
             slug = disp_name.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_").replace(".", "_")
-            ind_path = os.path.join(charts_dir, f"compare_{slug}.png")
+            ind_path = charts_dir / f"compare_{slug}.png"
             plt.savefig(ind_path, dpi=200, bbox_inches="tight")
             plt.close()
 
@@ -1085,7 +1118,7 @@ def main():
 
             plt.suptitle("Dashboard Consolidado: Artigo (Original) vs Reproduzido em Todos os Modelos", fontsize=15, fontweight="bold", y=0.995)
             plt.tight_layout()
-            grid_chart_path = os.path.join(args.output_dir, "table1_all_models_comparison_grid.png")
+            grid_chart_path = output_dir / "table1_all_models_comparison_grid.png"
             plt.savefig(grid_chart_path, dpi=250, bbox_inches="tight")
             plt.close()
             print(f"Mosaico consolidado de todos os modelos salvo em: {grid_chart_path}")

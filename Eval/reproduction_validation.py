@@ -1,14 +1,33 @@
 """Five evaluation blocks for the seed-42 / 512-token reproduction.
 
 No API requests are made. All metrics are percentages; missing values stay missing.
+
+Execução:
+    python Eval/reproduction_validation.py
+    python Eval/reproduction_validation.py --models PIGuard\\ HF train_augmented_mof_original
+    python Eval/reproduction_validation.py --output /caminho/para/outputs --skip-recheck
 """
+import argparse
 import csv
 import gc
 import hashlib
 import json
+import os
 import platform
+import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+
+# Disponibiliza os módulos locais do projeto (Original/util.py, Original/params.py
+# e o próprio pacote Eval) independentemente do diretório de trabalho.
+for _local_path in (ROOT_DIR, ROOT_DIR / "Original", ROOT_DIR / "Eval"):
+    _entry = str(_local_path)
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
 
 BLOCKS = ['Tabelas_1_e_7_Baselines_PIGuard', 'Tabela_2_Designs_1_e_2_Fase1_Triggers',
           'Tabela_2_Ablacao_Completa', 'Tabela_3_Shortcut_Mitigation', 'Extra_TensorTrust']
@@ -26,6 +45,18 @@ TABLE7 = {'Deepset': [23.89,52.21,12.39,50.98,84.67], 'Fmops':[18.58,53.10,13.27
 DESIGNS = [('Basic', [75.22,78.53,70.17,74.64]), ('+ Aug',[64.31,81.36,75.95,73.87]),
  ('Basic + MOF scratch',[89.38,84.73,71.57,81.89]), ('+ Aug + MOF fine-tuning',[68.14,82.11,74.81,75.02]),
  ('+ Aug + MOF scratch',[87.32,85.74,77.39,83.48])]
+
+
+def resolve_path(value, default):
+    """Resolve um caminho contra a raiz do repositório.
+
+    Caminhos absolutos são preservados; caminhos relativos são interpretados a
+    partir de ``ROOT_DIR`` (nunca do ``cwd`` atual).
+    """
+    if value is None or str(value) == "":
+        return Path(default).expanduser().resolve()
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else (ROOT_DIR / path).resolve()
 
 
 def read(path):
@@ -66,10 +97,12 @@ def model_for_design(index, variant):
 
 
 class ValidationRun:
-    def __init__(self, repo, output, legacy=None, batch_size=32, force=False, factory=None):
-        self.repo, self.output = Path(repo).resolve(), Path(output).resolve()
+    def __init__(self, repo=None, output=None, legacy=None, batch_size=32, force=False, factory=None):
+        default_output = os.environ.get('PIGUARD_OUTPUT_DIR', ROOT_DIR / 'outputs')
+        self.repo = resolve_path(repo, ROOT_DIR)
+        self.output = resolve_path(output, default_output)
         self.root = self.output / 'Gráficos'
-        self.legacy = Path(legacy) if legacy else None
+        self.legacy = resolve_path(legacy, ROOT_DIR) if legacy else None
         self.batch_size, self.force, self.factory = batch_size, force, factory
         import torch, transformers
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -84,19 +117,28 @@ class ValidationRun:
             if not texts: raise ValueError(f'Benchmark vazio: {path}')
             self.data[name] = texts; self.hashes[name] = digest(path)
         self.results = {}; self.status = {}
+        self.root.mkdir(parents=True, exist_ok=True)
         for folder in BLOCKS: (self.root / folder).mkdir(parents=True, exist_ok=True)
+
+    def checkpoint_path(self, name):
+        """Localiza o checkpoint local, priorizando o diretório de saída."""
+        for base in (self.output, self.repo / 'checkpoints'):
+            candidate = base / name / 'best_model.pth'
+            if candidate.is_file():
+                return candidate
+        return self.output / name / 'best_model.pth'
 
     def evaluator(self, name):
         if self.factory: return self.factory(name)
         from Eval.validate_models_table1 import HFSequenceClassifierEvaluator, LocalPIGuardEvaluator
         if name in HF_MODELS: return HFSequenceClassifierEvaluator(HF_MODELS[name], self.device)
-        return LocalPIGuardEvaluator(str(self.output / name / 'best_model.pth'), self.device)
+        return LocalPIGuardEvaluator(str(self.checkpoint_path(name)), self.device)
 
     def fingerprint(self, name, evaluator):
         config = getattr(evaluator.model, 'config', getattr(evaluator.model, 'deberta', None))
         revision = getattr(config, '_commit_hash', None)
         if revision is None and hasattr(config, 'config'): revision = getattr(config.config, '_commit_hash', None)
-        ckpt = self.output / name / 'best_model.pth'
+        ckpt = self.checkpoint_path(name)
         return {'seed':42, 'max_length':512, 'batch_size':self.batch_size, 'data':self.hashes,
                 'checkpoint':digest(ckpt) if name not in HF_MODELS else HF_MODELS[name],
                 'revision':revision, 'environment':self.environment, 'implementation':digest(__file__),
@@ -105,7 +147,7 @@ class ValidationRun:
     def evaluate(self, name):
         import torch
         self.results.pop(name, None)
-        if name not in HF_MODELS and not (self.output / name / 'best_model.pth').is_file():
+        if name not in HF_MODELS and not self.checkpoint_path(name).is_file():
             self.status[name] = 'checkpoint ausente'; self.persist(); return
         evaluator = None
         try:
@@ -426,9 +468,11 @@ class ValidationRun:
             if not self.force and path.exists() and meta.exists() and read(meta)==spec:continue
             if meta.exists(): meta.unlink()
             if path.exists(): path.unlink()
-            cmd=[sys.executable,str(self.repo/'datasets/MOF/Cache/token_recheck.py'),'--checkpoint',str(self.output/name/'best_model.pth'),'--output',str(path),'--batch_size','512']
-            import os
-            env=dict(os.environ, PYTHONPATH=str(self.repo)+os.pathsep+os.environ.get('PYTHONPATH',''))
+            cmd=[sys.executable,str(self.repo/'datasets/MOF/Cache/token_recheck.py'),'--checkpoint',str(self.checkpoint_path(name)),'--output',str(path),'--batch_size','512']
+            extra_paths = [str(self.repo), str(self.repo / 'Original')]
+            if os.environ.get('PYTHONPATH'):
+                extra_paths.append(os.environ['PYTHONPATH'])
+            env=dict(os.environ, PYTHONPATH=os.pathsep.join(extra_paths))
             try:
                 subprocess.run(cmd,cwd=self.repo,env=env,check=True);write(meta,spec)
                 self.status[name + ' / triggers'] = 'concluído'
@@ -438,10 +482,66 @@ class ValidationRun:
         rows=[{'model':n,'trigger_tokens':len(read(self.root/BLOCKS[1]/f'trigger_words_{n}.json'))} for n in BASES if n in self.results and (self.root/BLOCKS[1]/f'trigger_words_{n}.json').exists() and (self.root/BLOCKS[1]/f'trigger_words_{n}.manifest.json').exists() and read(self.root/BLOCKS[1]/f'trigger_words_{n}.manifest.json') == self.results[n]['spec']]
         csv_write(self.root/BLOCKS[1]/'trigger_counts.csv',rows)
 
-    def run(self):
-        from params import build_parser
+    def run(self, names=None, skip_recheck=False):
         from util import set_seed
-        set_seed(build_parser().parse_args([]))
-        for name in list(HF_MODELS)+LOCAL_MODELS:self.evaluate(name)
-        self.reports();self.recheck();self.persist()
+        set_seed(SimpleNamespace(seed=42))
+        for name in (names or list(HF_MODELS) + LOCAL_MODELS):
+            self.evaluate(name)
+        self.reports()
+        if not skip_recheck:
+            self.recheck()
+        self.persist()
         return self.status
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description=(
+            'Executa os cinco blocos de validação da reprodução '
+            '(seed 42 / 512 tokens) sem chamadas de API.'
+        )
+    )
+    parser.add_argument(
+        '--repo', default=str(ROOT_DIR),
+        help='Raiz do repositório (padrão: detectada a partir de Eval/).',
+    )
+    parser.add_argument(
+        '--output', default=os.environ.get('PIGUARD_OUTPUT_DIR', str(ROOT_DIR / 'outputs')),
+        help='Diretório de checkpoints e resultados (padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs).',
+    )
+    parser.add_argument(
+        '--legacy', default=None,
+        help='Diretório legado com Gráficos/table1_validation_raw.json (opcional).',
+    )
+    parser.add_argument('--batch-size', type=int, default=32, help='Tamanho do lote.')
+    parser.add_argument(
+        '--force', action='store_true',
+        help='Ignora caches e reexecuta as avaliações.',
+    )
+    parser.add_argument(
+        '--models', nargs='+', default=None,
+        help='Avalia apenas os modelos informados (padrão: todos).',
+    )
+    parser.add_argument(
+        '--skip-recheck', action='store_true',
+        help='Não executa a rechecagem de trigger words.',
+    )
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    run = ValidationRun(
+        repo=args.repo,
+        output=args.output,
+        legacy=args.legacy,
+        batch_size=args.batch_size,
+        force=args.force,
+    )
+    status = run.run(names=args.models, skip_recheck=args.skip_recheck)
+    print(json.dumps(status, indent=2, ensure_ascii=False))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
