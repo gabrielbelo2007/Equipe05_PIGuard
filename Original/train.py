@@ -3,11 +3,11 @@ import torch
 import numpy as np
 from transformers import AutoTokenizer, get_scheduler
 from torch.utils.data import DataLoader
-from envio_gith.Equipe05_PIGuard.Original.PIGuard import PIGuard
+from PIGuard import PIGuard
 from datasets import load_dataset
-from envio_gith.Equipe05_PIGuard.Original.util import set_seed, get_logger, compute_accuracy
-from envio_gith.Equipe05_PIGuard.Original.params import parse_args
-from envio_gith.Equipe05_PIGuard.Original.eval import evaluate
+from util import set_seed, get_logger, compute_accuracy
+from params import parse_args
+from eval import evaluate
 
 
 def train():
@@ -74,7 +74,8 @@ def train():
         num_training_steps=epochs * len(train_loader) 
     )
 
-    best_accuracy = 0
+    best_accuracy = float('-inf')
+    best_model_path = None
     for epoch in range(epochs):
         model.train()
         for step, batch in enumerate(train_loader):
@@ -93,8 +94,7 @@ def train():
             scheduler.step()
 
             if step % args.display == 0:
-                logger.info(f"Step: {step} / {len(train_loader)}.")
-                logger.info(f"Loss: {loss:.3f}")
+                logger.info(f"Época {epoch + 1}/{epochs} | Step {step + 1}/{len(train_loader)} | Loss: {loss:.3f}")
 
             if ((step % args.save_step == 0) and (step != 0)) or (step == (len(train_loader) - 1)):
                 model.eval()
@@ -136,18 +136,27 @@ def train():
                         torch.save(model.state_dict(), model_path)
                         print(f"Saved to {model_path}.")
 
-                        if total_accuracy > best_accuracy:
-                            best_accuracy = total_accuracy
-                            best_model_path = f'{save_path}/best_model.pth'
-                            torch.save(model.state_dict(), best_model_path)
-                            print(f"Saved to {best_model_path}.")
+                    # Sempre guardar o melhor candidato, inclusive quando nenhum
+                    # checkpoint ultrapassa o limiar. Empates preservam o primeiro.
+                    if total_accuracy > best_accuracy:
+                        best_accuracy = total_accuracy
+                        best_model_path = f'{save_path}/best_model.pth'
+                        torch.save(model.state_dict(), best_model_path)
+                        logger.info(f"Melhor validação até agora: {best_accuracy:.4f} (época {epoch + 1}, step {step + 1}).")
 
                 model.train()
 
     # evaluate on overall test set
     logger.info("Evaluate Best Model on Test Sets.")
+    if best_model_path is None:
+        raise RuntimeError("Nenhuma validação foi executada; confira os dados e a configuração do treinamento.")
+    if best_accuracy <= args.save_thres:
+        logger.warning(f"Nenhuma validação superou {args.save_thres:.2%}; usando o melhor checkpoint observado ({best_accuracy:.2%}).")
+    else:
+        logger.info(f"Melhor acurácia de validação: {best_accuracy:.2%}.")
     model.load_state_dict(torch.load(best_model_path, map_location=device))
     logger.info(f"Loaded model from {best_model_path}.")
+    model.eval()
     evaluate(model, args.dataset_root)
 
 if __name__ == "__main__":
