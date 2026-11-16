@@ -66,11 +66,69 @@ ainda a se colocar
 
 ---
 
-## 🚀 4. Guia de Execução Passo a Passo
+## 4. Executar os notebooks convertidos no Linux
 
+Os nove scripts em `Scripts/first_train/`, `Scripts/second_train/` e
+`Scripts/train_extras/` podem ser chamados individualmente com `python3`.
+Use o caminho absoluto do script para chamá-lo de outro diretório. Os caminhos
+relativos passados como argumentos são interpretados a partir da raiz deste
+projeto. Cada script aceita `--help`.
+
+Para instalar apenas as dependências usadas pelos scripts, use Python 3.10 a
+3.12 em um ambiente virtual. Os pacotes abaixo já constam no
+`requirements.txt`. O arquivo completo também inclui dependências de outros
+fluxos do projeto.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install torch==2.4.0 transformers==4.44.0 datasets==2.21.0 \
+    sentencepiece==0.2.0 protobuf==4.25.4 tiktoken==0.7.0 PyYAML==6.0.2 \
+    numpy==1.26.3 pandas==2.2.2 matplotlib==3.9.2 tqdm==4.66.5
 ```
-  Execução aqui
+
+Para usar uma GPU NVIDIA, instale um driver compatível com a distribuição
+CUDA do PyTorch. Os scripts também executam em CPU.
+[Instruções do PyTorch](https://pytorch.org/get-started/previous-versions/#v240)
+
+Os treinos chamam os programas Python do checkout local de `RP_PIGuard`. Os
+scripts procuram esse checkout dentro do projeto ou nos dois diretórios
+superiores. Use `RP_PIGUARD_DIR` para indicar outro caminho até um checkout
+com o nome `RP_PIGuard`. Os datasets de treino são procurados primeiro em
+`datasets/` neste projeto e depois no checkout de reprodução.
+
+Exemplos a partir da raiz do projeto
+
+```bash
+python3 Scripts/first_train/train.py --experiment train_augmented_original
+python3 Scripts/second_train/train.py --experiment train_augmented_mof_finetuning_original
+python3 Scripts/second_train/eval.py
+python3 Scripts/second_train/eval_table1.py --skip-openrouter
+python3 Scripts/train_extras/eval.py --benchmark tensor-trust
 ```
+
+- Os scripts de treino executam todos os experimentos por padrão. Use
+  `--experiment` para selecionar um deles. Use `--train-set` com um único
+  experimento para apontar a versão correta do dataset. Se já houver um
+  checkpoint e você quiser substituí-lo, use também `--force-retrain`.
+- Os pesos e as trigger words ficam em `checkpoints/<experimento>/` ou no
+  diretório definido por `PIGUARD_OUTPUT_DIR`. Os logs e relatórios ficam em
+  `logs/`. Nas avaliações, use `--output-dir` para indicar outro destino.
+- O fine-tuning MOF requer os pesos de base produzidos na primeira etapa. As
+  avaliações locais precisam dos checkpoints dos experimentos correspondentes.
+  A Tabela 1, a Tabela 2 e as avaliações extras podem reutilizar métricas
+  salvas quando disponíveis.
+- A variante `first_train/new_train.py` espera os datasets legados
+  `train_augmented.json`, `train_new_augmented.json` e `train_cleaned.json`.
+  Forneça esses arquivos em `datasets/` ou use `--train-set` por experimento.
+- O primeiro uso dos modelos e do Tensor Trust requer acesso ao Hugging Face
+  quando os arquivos ainda estão fora do cache local. Modelos restritos, como
+  Prompt Guard na Tabela 1, exigem acesso concedido à conta do Hugging Face.
+  As chamadas ao OpenRouter na Tabela 1 usam `OPENROUTER_API_KEY` ou
+  `OPENAI_API_KEY` do ambiente ou do arquivo `.env` na raiz.
+- O validador preserva os identificadores OpenRouter usados pela reprodução.
+  A linha histórica `Llama-2-chat` executa `meta-llama/llama-3.1-8b-instruct`
+  e a linha `LlamaGuard3` executa `meta-llama/llama-guard-4-12b`.
 
 ---
 

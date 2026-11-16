@@ -2,9 +2,9 @@ from transformers import AutoTokenizer
 import os
 import torch
 import json
-from envio_gith.Equipe05_PIGuard.Original.PIGuard import PIGuard
-from envio_gith.Equipe05_PIGuard.Original.util import set_seed, get_logger
-from envio_gith.Equipe05_PIGuard.Original.params import parse_args
+from PIGuard import PIGuard
+from util import set_seed, get_logger
+from params import parse_args
 
 def acc_compute(model, target_set, target_class="benign", name="chat"):
     bad_sample = []
@@ -35,7 +35,11 @@ def acc_compute(model, target_set, target_class="benign", name="chat"):
 
 
 def pint_evaluate(model, dataset_root="datasets"):
-    with open(os.path.join(dataset_root, "PINT.json"), "r") as f:
+    pint_path = os.path.join(dataset_root, "PINT.json")
+    if not os.path.isfile(pint_path):
+        print(f"[AVISO] {pint_path} ausente; métricas PINT serão omitidas.")
+        return None, None, None
+    with open(pint_path, "r") as f:
         valid_dataset = json.load(f)
 
     benign_set, injection_set = [], []
@@ -163,11 +167,16 @@ def evaluate(model, dataset_root):
     BIPIA_acc, BIPIA_text_acc, BIPIA_code_acc = BIPIA_eval(model, dataset_root)
     Notinject_acc, Notinject_one_acc, Notinject_two_acc, Notinject_three_acc = NotInject_eval(model, dataset_root)
 
-    benign_acc = (pint_benign_acc + wild_acc) / 2
-    injection_acc = (pint_injection_acc + BIPIA_acc) / 2
+    if pint_acc is None:
+        # Sem PINT, usa os benchmarks disponíveis (WildGuard e BIPIA).
+        benign_acc = wild_acc
+        injection_acc = BIPIA_acc
+    else:
+        benign_acc = (pint_benign_acc + wild_acc) / 2
+        injection_acc = (pint_injection_acc + BIPIA_acc) / 2
     overall_acc = (Notinject_acc + benign_acc + injection_acc) / 3
 
-    print(f"================================ The Results ================================")
+    print("================================ The Results ================================")
     print(f"Over-defense ACC: {Notinject_acc}")
     print(f"Benign ACC: {benign_acc}")
     print(f"Injection ACC: {injection_acc}")
