@@ -238,8 +238,8 @@ def run_token_recheck(
 ) -> Path | None:
     model_path = find_existing(
         [
-            REPO_ROOT / "checkpoints" / model_name / "best_model.pth",
             output_dir / model_name / "best_model.pth",
+            REPO_ROOT / "checkpoints" / model_name / "best_model.pth",
         ]
     )
     if model_path is None:
@@ -325,9 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected = tuple(dict.fromkeys(args.experiment or EXPERIMENT_NAMES))
