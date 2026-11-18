@@ -53,12 +53,6 @@ DEFAULT_TRAIN_SETS = {
     "train_cleaned_original": REPO_ROOT / "datasets/Augmented/train_cleaned_original.json",
 }
 
-LOG_NAMES = {
-    "train_augmented_original": "log_train_augmented_original.txt",
-    "train_augmented_rp": "log_train_augmented.txt",
-    "train_cleaned_original": "log_train_cleaned_oficial.txt",
-}
-
 
 def repo_path(value: str | os.PathLike[str]) -> Path:
     """Resolve um caminho relativo a partir da raiz do repositório."""
@@ -205,7 +199,8 @@ def train_experiment(
     )
 
     local_best = checkpoint_dir / "best_model.pth"
-    local_log = logs_dir / LOG_NAMES[name]
+    log_name = f"log_{name}.txt"
+    local_log = logs_dir / log_name
     if not local_best.is_file():
         print(f"[AVISO] {local_best} não foi gerado.")
         return False
@@ -213,7 +208,7 @@ def train_experiment(
     print(f"\nCopiando {local_best} para {target_dir}...")
     shutil.copy2(local_best, target_best)
     if local_log.is_file():
-        shutil.copy2(local_log, target_dir / LOG_NAMES[name])
+        shutil.copy2(local_log, target_dir / log_name)
     print(f"Treinamento '{name}' salvo com sucesso em: {target_best}")
 
     # Remove checkpoints intermediários de época para poupar espaço em disco.
@@ -232,16 +227,13 @@ def run_token_recheck(
     recheck_script: Path,
     batch_size: int = 256,
 ) -> Path | None:
-    """Executa o Token-wise Recheck e copia o JSON de trigger words para ``MOF/``."""
+    """Extrai trigger words do checkpoint selecionado para esta rodada."""
     model_path = find_existing(
         [
-            REPO_ROOT / "checkpoints" / model_name / "best_model.pth",
             output_dir / model_name / "best_model.pth",
+            REPO_ROOT / "checkpoints" / model_name / "best_model.pth",
         ]
     )
-    if model_path is None and model_name == "train_augmented_original":
-        model_path = find_existing([output_dir / "train_augmented_rp" / "best_model.pth"])
-
     if model_path is None:
         print(f"[AVISO] Checkpoint de '{model_name}' não encontrado; recheck ignorado.")
         return None
@@ -259,9 +251,6 @@ def run_token_recheck(
         ],
     )
 
-    mof_dir = REPO_ROOT / "MOF"
-    mof_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(output_path, mof_dir / output_name)
     return output_path
 
 
@@ -329,9 +318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected = tuple(dict.fromkeys(args.experiment or EXPERIMENT_NAMES))
@@ -371,18 +358,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"FORCE_RETRAIN: {args.force_retrain}")
 
     # Reaproveitamento de checkpoints legados, como no notebook original.
-    if "train_augmented_original" in selected:
-        best_1 = output_dir / "train_augmented_original/best_model.pth"
-        legacy_1 = output_dir / "train_augmented_rp/best_model.pth"
-        if (
-            not best_1.is_file()
-            and legacy_1.is_file()
-            and not (REPO_ROOT / "datasets/Augmented/train_augmented_rp.json").is_file()
-        ):
-            print(f"Reaproveitando checkpoint legado oficial para {best_1.parent}...")
-            best_1.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(legacy_1, best_1)
-
     if "train_cleaned_original" in selected:
         best_3 = output_dir / "train_cleaned_original/best_model.pth"
         legacy_3 = output_dir / "train_cleaned/best_model.pth"
@@ -413,7 +388,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if "train_augmented_rp" in selected:
             run_token_recheck(
                 "train_augmented_rp",
-                "trigger_words_train_augmented.json",
+                "trigger_words_train_augmented_rp.json",
                 output_dir,
                 recheck_script,
             )
