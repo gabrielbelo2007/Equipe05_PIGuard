@@ -22,9 +22,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
-
-import torch
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 # Permite executar este arquivo diretamente de qualquer diretório.
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,17 +37,13 @@ from Upgrade import (
     load_benchmarks,
     read_json,
     resolve_path,
+    sha256_file,
     write_csv,
     write_json,
 )
-from Upgrade.laya_english_cascade import (
-    LayaEnglishEngine,
-    calibrate_laya_on_heldout,
-    cascade_predict,
-    compute_cascade_latency_metrics,
-    paired_bootstrap_ci,
-    score_dataset_from_window_logits,
-)
+
+if TYPE_CHECKING:
+    from Upgrade.laya_english_cascade import LayaEnglishEngine
 
 RP_MODELS: Tuple[str, ...] = (
     "train_augmented_rp",
@@ -72,6 +66,33 @@ def _texts_digest(texts: Sequence[str]) -> str:
         hasher.update(len(encoded).to_bytes(8, "little"))
         hasher.update(encoded)
     return hasher.hexdigest()
+
+
+def evaluation_inputs(
+    benchmarks: Dict[str, Tuple[List[str], int]],
+    heldout_path: Path,
+    *,
+    fpr_budget: float,
+    n_boot: int,
+    seed: int,
+    batch_size: int,
+    laya_batch_size: int,
+) -> Dict[str, Any]:
+    return {
+        "benchmarks": {name: [_texts_digest(texts), label] for name, (texts, label) in benchmarks.items()},
+        "heldout_sha256": sha256_file(heldout_path),
+        "fpr_budget": fpr_budget,
+        "n_boot": n_boot,
+        "seed": seed,
+        "batch_size": batch_size,
+        "laya_batch_size": laya_batch_size,
+    }
+
+
+def file_signature(path: Optional[Path]) -> Optional[Dict[str, str]]:
+    if path is None or not path.is_file():
+        return None
+    return {"path": str(path), "sha256": sha256_file(path)}
 
 
 def extract_or_load_laya_cache(
@@ -98,10 +119,15 @@ def extract_or_load_laya_cache(
             print(f"[Laya Cache] Reaproveitando logits salvos em {path}", flush=True)
             return cached
 
-    engine = laya_engine or LayaEnglishEngine(
-        window_max_len=window_max_len,
-        overlap_tokens=overlap_tokens,
-    )
+    if laya_engine is None:
+        from Upgrade.laya_english_cascade import LayaEnglishEngine
+
+        engine = LayaEnglishEngine(
+            window_max_len=window_max_len,
+            overlap_tokens=overlap_tokens,
+        )
+    else:
+        engine = laya_engine
     entries: Dict[str, Any] = {}
     for key, texts in texts_by_key.items():
         print(f"[Laya English] Extraindo logits por janela para '{key}' ({len(texts)} amostras)...", flush=True)
@@ -144,6 +170,7 @@ def run_piguard_inference(
             ms_by_key[key] = [float(m) for m in ms_list]
         return preds_by_key, ms_by_key
 
+    import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
     from Corrections.renew_token_recheck import load_checkpoint
 
@@ -245,6 +272,14 @@ def evaluate_piguard_with_laya(
     predict_fn: Optional[Callable[[Sequence[str]], Tuple[List[int], List[float]]]] = None,
 ) -> Dict[str, Any]:
     """Avalia um modelo PIGuard em 3 modos: Puro, + Laya Não Calibrado e + Laya Calibrado."""
+    from Upgrade.laya_english_cascade import (
+        calibrate_laya_on_heldout,
+        cascade_predict,
+        compute_cascade_latency_metrics,
+        paired_bootstrap_ci,
+        score_dataset_from_window_logits,
+    )
+
     texts_by_key: Dict[str, Sequence[str]] = {
         ds_name: texts for ds_name, (texts, _) in benchmarks.items()
     }
@@ -429,6 +464,22 @@ def _rows_from_evaluation_results(results: Sequence[Dict[str, Any]]) -> Tuple[Li
     return summary_rows, bootstrap_rows
 
 
+RP_CHECKPOINT_ALIASES: Dict[str, Tuple[str, ...]] = {
+    "train_clean_mof_rp": ("train_clean_mof",),
+    "train_augmented_mof_finetuning_rp": ("train_augmented_mof_finetuning",),
+    "train_augmented_mof_rp": ("train_augmented_mof",),
+}
+
+
+def resolve_rp_checkpoint(rp_root: Path, model_name: str) -> Path:
+    candidates = [model_name, *RP_CHECKPOINT_ALIASES.get(model_name, ())]
+    for cand in candidates:
+        ckpt = rp_root / cand / "best_model.pth"
+        if ckpt.is_file():
+            return ckpt
+    return rp_root / model_name / "best_model.pth"
+
+
 def run_topic1(
     *,
     drive_rp_root: Path | str,
@@ -462,12 +513,30 @@ def run_topic1(
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     result_json_path = topic1_dir / "topic1_rp_laya_results.json"
-    if not force and result_json_path.is_file():
-        print(f"[Tópico 1] Reutilizando resultados salvos em {result_json_path}", flush=True)
-        return read_json(result_json_path)
-
     benchmarks = load_benchmarks(repo / "datasets", include_tensortrust=True)
     heldout_records = read_json(heldout_path)
+    checkpoints = {name: resolve_rp_checkpoint(rp_root, name) for name in models}
+    references = {
+        name: rp_root / "Gráficos" / "_cache" / f"{name}.json" for name in models
+    }
+    if predict_fn_factory is None:
+        for ckpt in checkpoints.values():
+            if not ckpt.is_file():
+                raise FileNotFoundError(f"Checkpoint `rp` ausente: {ckpt}")
+    inputs = {
+        "evaluation": evaluation_inputs(
+            benchmarks, heldout_path, fpr_budget=fpr_budget, n_boot=n_boot, seed=seed,
+            batch_size=batch_size, laya_batch_size=laya_batch_size,
+        ),
+        "models": list(models),
+        "checkpoints": {name: file_signature(path) for name, path in checkpoints.items()},
+        "references": {name: file_signature(path) for name, path in references.items()},
+    }
+    if not force and predict_fn_factory is None and result_json_path.is_file():
+        cached = read_json(result_json_path)
+        if cached.get("inputs") == inputs and not cached.get("simulated_predictions"):
+            print(f"[Tópico 1] Reutilizando resultados salvos em {result_json_path}", flush=True)
+            return cached
 
     # Pré-extração compartilhada do Laya English para todos os benchmarks e held-out
     bench_texts = {ds_name: texts for ds_name, (texts, _) in benchmarks.items()}
@@ -488,11 +557,8 @@ def run_topic1(
 
     model_results: List[Dict[str, Any]] = []
     for model_name in models:
-        ckpt = rp_root / model_name / "best_model.pth"
-        if not ckpt.is_file() and predict_fn_factory is None:
-            raise FileNotFoundError(f"Checkpoint `rp` ausente: {ckpt}")
-
-        drive_cache_file = rp_root / "Gráficos" / "_cache" / f"{model_name}.json"
+        ckpt = checkpoints[model_name]
+        drive_cache_file = references[model_name]
         drive_ref = read_json(drive_cache_file) if drive_cache_file.is_file() else None
         if isinstance(drive_ref, dict):
             drive_ref = {
@@ -525,6 +591,8 @@ def run_topic1(
 
     payload = {
         "status": "complete",
+        "inputs": inputs,
+        "simulated_predictions": predict_fn_factory is not None,
         "fpr_budget": fpr_budget,
         "n_boot": n_boot,
         "seed": seed,
@@ -571,7 +639,7 @@ def main() -> None:
     )
     output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
     rp_default = resolve_path(
-        os.environ.get("PIGUARD_RP_OUTPUT"),
+        os.environ.get("PIGUARD_RP_OUTPUT") or os.environ.get("PIGUARD_OUTPUT_DIR"),
         repo_root / "outputs",
         repo_root=repo_root,
     )

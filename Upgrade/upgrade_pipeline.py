@@ -143,7 +143,7 @@ def _resolve_inputs(args: argparse.Namespace) -> dict[str, Path | str | None]:
         repo_root=repo,
     )
     rp_default = resolve_path(
-        os.environ.get("PIGUARD_RP_OUTPUT"),
+        os.environ.get("PIGUARD_RP_OUTPUT") or os.environ.get("PIGUARD_OUTPUT_DIR"),
         repo / "outputs",
         repo_root=repo,
     )
@@ -212,8 +212,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rp-root", default=None)
     parser.add_argument("--trigger-report", default=None)
     parser.add_argument("--corrected-checkpoint", default=None)
-    parser.add_argument("--mof-v2", default=None)
-    parser.add_argument("--heldout", default=None)
+    parser.add_argument("--mof-v2", default=None, help="Arquivo MOF v2 usado pelo Tópico 2.")
+    parser.add_argument("--heldout", default=None, help="Arquivo de calibração usado pelos Tópicos 1 e 2.")
     parser.add_argument("--corrected-train", default=None)
     parser.add_argument("--llm-augmented", default=None)
     parser.add_argument("--api-key", default=None)
@@ -292,20 +292,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "A Etapa 0 exige OPENROUTER_API_KEY/OPENAI_API_KEY. "
                 "Defina a variável, crie <repo>/.env ou use --api-key."
             )
-    if args.skip_step0:
-        # Tópico 1 usa o held-out; Tópico 2 usa held-out + MOF_v2. Tópico 3
-        # apenas consolida resultados já existentes.
-        required = []
-        if not args.skip_topic1 or not args.skip_topic2:
-            required.append(("calibration_heldout.json", heldout))
-        if not args.skip_topic2:
-            required.append(("MOF_v2_train.json", mof_v2))
-        for label, path in required:
-            if not Path(path).is_file():
-                raise FileNotFoundError(
-                    f"--skip-step0 exige {label} existente; não encontrado em {path}."
-                )
-
     if not args.skip_step0:
         with pipeline_stage("Etapa 0: Novo MOF + held-out") as notes:
             from Upgrade.step0_new_mof_and_heldout import run_step0
@@ -321,8 +307,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 force=args.force_step0,
                 api_key=api_key,
             )
-            mof_v2 = Path(report["mof_v2_train_path"])
-            heldout = Path(report["calibration_heldout_path"])
+            if args.mof_v2 is None:
+                mof_v2 = Path(report["mof_v2_train_path"])
+            if args.heldout is None:
+                heldout = Path(report["calibration_heldout_path"])
             notes.append(
                 f"MOF_v2={report['mof_v2_count']} | "
                 f"heldout={report['heldout_total_count']} | "
@@ -334,6 +322,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"disjunto={report['disjoint_check']['disjoint']}",
                 flush=True,
             )
+
+    if (not args.skip_topic1 or not args.skip_topic2) and not Path(heldout).is_file():
+        raise FileNotFoundError(f"Conjunto de calibração ausente: {heldout}")
+    if not args.skip_topic2 and not Path(mof_v2).is_file():
+        raise FileNotFoundError(f"MOF v2 de treino ausente: {mof_v2}")
 
     if not args.skip_topic1:
         with pipeline_stage("Tópico 1: modelos rp + Laya English") as notes:

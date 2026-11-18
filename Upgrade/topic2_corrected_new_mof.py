@@ -19,10 +19,7 @@ import subprocess
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
-
-import torch
-import transformers
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -38,12 +35,16 @@ from Upgrade import (
     write_csv,
     write_json,
 )
-from Upgrade.laya_english_cascade import LayaEnglishEngine
 from Upgrade.topic1_rp_laya_evaluation import (
     _rows_from_evaluation_results,
     evaluate_piguard_with_laya,
+    evaluation_inputs,
     extract_or_load_laya_cache,
+    file_signature,
 )
+
+if TYPE_CHECKING:
+    from Upgrade.laya_english_cascade import LayaEnglishEngine
 
 DEFAULT_UPGRADE_OUTPUT = Path(
     os.environ.get("PIGUARD_UPGRADE_OUTPUT", REPO_ROOT / "Upgrade" / "outputs")
@@ -161,6 +162,9 @@ def run_train_corrected_new_mof(
     force_retrain: bool = False,
 ) -> Path:
     """Executa o treinamento scratch via ``Original/train.py`` com checkpointing seguro."""
+    import torch
+    import transformers
+
     repo = Path(repo_root).expanduser().resolve()
     target = Path(model_dir).expanduser()
     if not target.is_absolute():
@@ -309,9 +313,32 @@ def run_topic2(
         d.mkdir(parents=True, exist_ok=True)
 
     result_json_path = topic2_dir / "topic2_results.json"
-    if not force_eval and not force_retrain and result_json_path.is_file():
-        print(f"[Tópico 2] Reutilizando resultados salvos em {result_json_path}", flush=True)
-        return read_json(result_json_path)
+    benchmarks = load_benchmarks(repo / "datasets", include_tensortrust=True)
+    heldout_records = read_json(heldout_path)
+    expected_checkpoint = checkpoint_override or (model_dir / "best_model.pth")
+    if checkpoint_override is not None and predict_fn is None and not expected_checkpoint.is_file():
+        raise FileNotFoundError(f"Checkpoint solicitado ausente: {expected_checkpoint}")
+    base = file_signature(corrected_train_path)
+    if base is None:
+        base = [
+            file_signature(repo / "datasets/Augmented/train_cleaned_original.json"),
+            file_signature(llm_augmented_path),
+        ]
+    inputs = {
+        "evaluation": evaluation_inputs(
+            benchmarks, heldout_path, fpr_budget=fpr_budget, n_boot=n_boot, seed=seed,
+            batch_size=batch_size, laya_batch_size=laya_batch_size,
+        ),
+        "mof_v2": sha256_file(mof_v2_path),
+        "base": base,
+        "model": model_name,
+        "checkpoint": file_signature(expected_checkpoint),
+    }
+    if not force_eval and not force_retrain and predict_fn is None and result_json_path.is_file():
+        cached = read_json(result_json_path)
+        if inputs["checkpoint"] and cached.get("inputs") == inputs and not cached.get("simulated_predictions"):
+            print(f"[Tópico 2] Reutilizando resultados salvos em {result_json_path}", flush=True)
+            return cached
 
     combined_path, dataset_stats = build_combined_training_dataset(
         mof_v2_path=mof_v2_path,
@@ -335,8 +362,7 @@ def run_topic2(
             force_retrain=force_retrain,
         )
 
-    benchmarks = load_benchmarks(repo / "datasets", include_tensortrust=True)
-    heldout_records = read_json(heldout_path)
+    inputs["checkpoint"] = file_signature(ckpt_path)
 
     bench_texts = {ds_name: texts for ds_name, (texts, _) in benchmarks.items()}
     bench_laya_cache = extract_or_load_laya_cache(
@@ -374,6 +400,8 @@ def run_topic2(
 
     payload = {
         "status": "complete",
+        "inputs": inputs,
+        "simulated_predictions": predict_fn is not None,
         "model_name": model_name,
         "dataset_stats": dataset_stats,
         "result": eval_result,

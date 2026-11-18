@@ -472,9 +472,9 @@ def generate_new_mof_pool(
     call_fn: Optional[Callable[[dict, str], dict]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Gera o pool aprovado do Novo MOF estratificado por k in {1, 2, 3} e pelos 4 domínios."""
-    from transformers import AutoTokenizer
-
     if tokenizer is None:
+        from transformers import AutoTokenizer
+
         tokenizer = AutoTokenizer.from_pretrained("microsoft/deberta-v3-base")
 
     base_quotas = dict(pool_quotas or POOL_QUOTAS)
@@ -953,8 +953,16 @@ def run_step0(
     report_path = out / "step0_report.json"
 
     if not force and mof_train_path.is_file() and heldout_path.is_file() and report_path.is_file():
-        print(f"[Etapa 0] Reutilizando artefatos existentes em {out}", flush=True)
-        return read_json(report_path)
+        report = read_json(report_path)
+        artifacts = {"mof_v2_train": mof_train_path, "calibration_heldout": heldout_path}
+        if all(
+            not report.get(f"{name}_sha256") or report[f"{name}_sha256"] == sha256_file(path)
+            for name, path in artifacts.items()
+        ):
+            for name, path in artifacts.items():
+                report[f"{name}_path"] = str(path)
+            print(f"[Etapa 0] Reutilizando artefatos existentes em {out}", flush=True)
+            return report
 
     extra_forbidden: List[Path] = []
     if corrections_dir is not None:

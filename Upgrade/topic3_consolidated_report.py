@@ -644,7 +644,7 @@ def main() -> None:
     )
     output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
     rp_default = resolve_path(
-        os.environ.get("PIGUARD_RP_OUTPUT"),
+        os.environ.get("PIGUARD_RP_OUTPUT") or os.environ.get("PIGUARD_OUTPUT_DIR"),
         repo_root / "outputs",
         repo_root=repo_root,
     )

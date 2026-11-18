@@ -20,7 +20,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -38,12 +38,16 @@ from Upgrade import (
     write_csv,
     write_json,
 )
-from Upgrade.laya_english_cascade import LayaEnglishEngine
 from Upgrade.topic1_rp_laya_evaluation import (
     _rows_from_evaluation_results,
     evaluate_piguard_with_laya,
+    evaluation_inputs,
     extract_or_load_laya_cache,
+    file_signature,
 )
+
+if TYPE_CHECKING:
+    from Upgrade.laya_english_cascade import LayaEnglishEngine
 
 CORRECTED_COMPARISON_SPECS: Tuple[Dict[str, Any], ...] = (
     {
@@ -527,17 +531,34 @@ def run_corrected_comparison(
     result_json_path = comp_dir / "corrected_comparison_results.json"
     spec_by_model = {s["model"]: dict(s) for s in specs}
 
-    if not force and not force_reval_new_mof and result_json_path.is_file():
-        cached_bundle = read_json(result_json_path)
-        expected_models = [s["model"] for s in specs]
-        existing_models = [r["model"] for r in (cached_bundle.get("results") or [])]
-        if existing_models == expected_models:
-            print(f"[Corrected Comparison] Reutilizando resultados salvos em {result_json_path}", flush=True)
-            return cached_bundle
-
     benchmarks = load_benchmarks(repo / "datasets", include_tensortrust=True)
     heldout_records = read_json(heldout_path)
     corr_refs = _load_corrections_eval_raw(corr_dir)
+    checkpoint_roots = {"corrections": corr_dir, "upgrade": out}
+    checkpoints = {
+        spec["model"]: checkpoint_roots[spec["ckpt_root"]] / spec["ckpt_rel"]
+        for spec in specs if spec["ckpt_root"] in checkpoint_roots
+    }
+    if predict_fn_factory is None:
+        for model, checkpoint in checkpoints.items():
+            if not checkpoint.is_file():
+                raise FileNotFoundError(f"Checkpoint ausente para '{model}': {checkpoint}")
+    evaluation = evaluation_inputs(
+        benchmarks, heldout_path, fpr_budget=fpr_budget, n_boot=n_boot, seed=seed,
+        batch_size=batch_size, laya_batch_size=laya_batch_size,
+    )
+    checkpoint_inputs = {name: file_signature(path) for name, path in checkpoints.items()}
+    inputs = {
+        "evaluation": evaluation,
+        "checkpoints": checkpoint_inputs,
+        "models": [dict(spec) for spec in specs],
+        "references": corr_refs,
+    }
+    if not force and not force_reval_new_mof and predict_fn_factory is None and result_json_path.is_file():
+        cached_bundle = read_json(result_json_path)
+        if cached_bundle.get("inputs") == inputs and not cached_bundle.get("simulated_predictions"):
+            print(f"[Corrected Comparison] Reutilizando resultados salvos em {result_json_path}", flush=True)
+            return cached_bundle
 
     bench_texts = {ds_name: texts for ds_name, (texts, _) in benchmarks.items()}
     bench_laya_cache = extract_or_load_laya_cache(
@@ -569,20 +590,16 @@ def run_corrected_comparison(
             spec.get("reuse_topic2")
             and not force
             and not force_reval_new_mof
+            and predict_fn_factory is None
             and _is_valid_topic2_result(topic2_payload, model_name)
+            and not topic2_payload.get("simulated_predictions")
+            and topic2_payload.get("inputs", {}).get("evaluation") == evaluation
+            and topic2_payload["inputs"].get("checkpoint") == checkpoint_inputs.get(model_name)
         ):
             print(f"[Corrected Comparison] Reutilizando {model_name} de {topic2_path}", flush=True)
             res = dict(topic2_payload["result"])
         else:
-            ckpt: Optional[Path] = None
-            if spec["ckpt_root"] == "corrections":
-                ckpt = corr_dir / spec["ckpt_rel"]
-            elif spec["ckpt_root"] == "upgrade":
-                ckpt = out / spec["ckpt_rel"]
-
-            if ckpt is not None and not ckpt.is_file() and predict_fn_factory is None:
-                raise FileNotFoundError(f"Checkpoint ausente para '{model_name}': {ckpt}")
-
+            ckpt = checkpoints.get(model_name)
             p_fn = predict_fn_factory(spec, ckpt) if predict_fn_factory is not None else None
             print(f"\n[Corrected Comparison] Avaliando: {spec['display_name']}", flush=True)
             res = evaluate_piguard_with_laya(
@@ -634,6 +651,8 @@ def run_corrected_comparison(
 
     bundle = {
         "status": "complete",
+        "inputs": inputs,
+        "simulated_predictions": predict_fn_factory is not None,
         "fpr_budget": fpr_budget,
         "n_boot": n_boot,
         "seed": seed,
