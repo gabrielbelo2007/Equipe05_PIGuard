@@ -63,41 +63,49 @@ EXPERIMENTS = (
         "train_augmented_mof_original",
         "datasets/train.json",
     ),
-    # Vertente 2: vertente oficial (re-gerada).
+    # Vertente 2: semi-reprodução (trigger words oficiais).
     Experiment(
-        "train_clean_mof_oficial",
+        "train_clean_mof_semi_rp",
         "datasets/MOF/train_clean_mof_semi_rp.json",
     ),
     Experiment(
-        "train_augmented_mof_finetuning_oficial",
+        "train_augmented_mof_finetuning_semi_rp",
         "datasets/MOF/MOF_semi_rp.json",
         save_step=2,
         warmup=2,
         resume="original",
     ),
     Experiment(
-        "train_augmented_mof_oficial",
+        "train_augmented_mof_semi_rp",
         "datasets/MOF/train_augmented_mof_semi_rp.json",
     ),
     # Vertente 3: vertente reproduzida.
     Experiment(
-        "train_clean_mof",
+        "train_clean_mof_rp",
         "datasets/MOF/train_clean_mof_rp.json",
     ),
     Experiment(
-        "train_augmented_mof_finetuning",
+        "train_augmented_mof_finetuning_rp",
         "datasets/MOF/MOF_rp.json",
         save_step=2,
         warmup=2,
         resume="reproduced",
     ),
     Experiment(
-        "train_augmented_mof",
+        "train_augmented_mof_rp",
         "datasets/MOF/train_augmented_mof_rp.json",
     ),
 )
 
 EXPERIMENT_BY_NAME = {experiment.name: experiment for experiment in EXPERIMENTS}
+LEGACY_NAME_ALIASES = {
+    "train_clean_mof_semi_rp": ("train_clean_mof_oficial",),
+    "train_augmented_mof_finetuning_semi_rp": ("train_augmented_mof_finetuning_oficial",),
+    "train_augmented_mof_semi_rp": ("train_augmented_mof_oficial",),
+    "train_clean_mof_rp": ("train_clean_mof",),
+    "train_augmented_mof_finetuning_rp": ("train_augmented_mof_finetuning",),
+    "train_augmented_mof_rp": ("train_augmented_mof",),
+}
 
 
 def repo_path(value: str | os.PathLike[str]) -> Path:
@@ -181,7 +189,6 @@ def resolve_base_checkpoint(kind: str, output_dir: Path) -> Path | None:
         return find_existing(
             [
                 output_dir / "train_augmented_original" / "best_model.pth",
-                output_dir / "train_augmented_rp" / "best_model.pth",
                 checkpoints / "train_augmented_original" / "best_model.pth",
             ]
         )
@@ -204,9 +211,15 @@ def run_mof_experiment(
     """Executa um treinamento, salva log/checkpoint e limpa épocas intermediárias."""
     output_target = output_dir / experiment.name
     output_best = output_target / "best_model.pth"
+    existing_best = find_existing(
+        [
+            output_best,
+            *(output_dir / alias / "best_model.pth" for alias in LEGACY_NAME_ALIASES.get(experiment.name, ())),
+        ]
+    )
 
-    if output_best.is_file() and not force_retrain:
-        print(f"\n[SKIP] Modelo '{experiment.name}' já existe em: {output_best}")
+    if existing_best is not None and not force_retrain:
+        print(f"\n[SKIP] Modelo '{experiment.name}' já existe em: {existing_best}")
         print("Use --force-retrain para reexecutar.")
         return False
 
@@ -316,9 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected_names = tuple(dict.fromkeys(args.experiment or EXPERIMENT_BY_NAME))
