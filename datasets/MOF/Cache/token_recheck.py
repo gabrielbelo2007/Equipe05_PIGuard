@@ -1,10 +1,15 @@
 import argparse
 import json
 import os
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, AutoModelForSequenceClassification
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 class FallbackPIGuard(nn.Module):
     def __init__(self, base_model_name: str = "microsoft/deberta-v3-base", num_labels: int = 2):
@@ -32,7 +37,9 @@ def load_guard_model(model_path: str, base_arch: str, device: torch.device):
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
 
         try:
-            from PIGuard import PIGuard
+            if str(REPO_ROOT) not in sys.path:
+                sys.path.insert(0, str(REPO_ROOT))
+            from Original.PIGuard import PIGuard
             model = PIGuard(base_arch, num_labels=2, device=device)
             model.load_state_dict(state_dict, strict=False)
             model = model.to(device=device, dtype=torch.float32)
@@ -59,6 +66,13 @@ def main():
     parser.add_argument("--output", type=str, default="trigger_words_reproduction.json")
     parser.add_argument("--batch_size", type=int, default=512)
     args = parser.parse_args()
+    checkpoint = Path(args.checkpoint).expanduser()
+    local_checkpoint = REPO_ROOT / checkpoint
+    if local_checkpoint.exists():
+        args.checkpoint = str(local_checkpoint.resolve())
+    elif checkpoint.is_absolute() or args.checkpoint.startswith(".") or checkpoint.suffix in (".pth", ".pt"):
+        parser.error(f"Checkpoint não encontrado: {local_checkpoint}")
+    args.output = str((REPO_ROOT / Path(args.output).expanduser()).resolve())
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -111,6 +125,9 @@ def main():
                 if pred == 1:
                     biased_tokens.append(token_text)
 
+    out_dir = os.path.dirname(os.path.abspath(args.output))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(biased_tokens, f, indent=4, ensure_ascii=False)
     print(f"Total de trigger tokens extraídos: {len(biased_tokens)} | Salvo em: {args.output}")

@@ -18,11 +18,19 @@ import json
 import os
 import random
 import re
-import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, List
+
+CACHE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CACHE_DIR.parents[2]
+
+
+def resolve_repo_path(path_value: str) -> str:
+    path = Path(path_value).expanduser()
+    return str(path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve())
 
 # Model snapshot
 GENERATION_MODEL = "openai/gpt-4o-mini-2024-07-18"
@@ -72,13 +80,14 @@ def load_api_key() -> str:
         if val:
             return val.strip().strip("\"'")
 
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    if k.strip().lower() in ("openrouter_api_key", "openai_api_key"):
-                        return v.strip().strip("\"'")
+    for env_path in (REPO_ROOT / ".env", Path(".env")):
+        if env_path.is_file():
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip().lower() in ("openrouter_api_key", "openai_api_key"):
+                            return v.strip().strip("\"'")
 
     raise RuntimeError("API key not found in environment or .env file.")
 
@@ -403,17 +412,19 @@ def generate_category_samples(
 def run_generation(
     model: str = GENERATION_MODEL,
     seed: int = 42,
-    curated_path: str = "Augmented/curated_prompt_injections.json",
-    output_augmented_json: str = "Augmented/LLM_augmented.json",
-    train_cleaned_path: str = "datasets/train_cleaned_oficial.json",
-    train_augmented_path: str = "datasets/train_augmented.json",
+    curated_path: str = "datasets/Augmented/Cache/curated_prompt_injections.json",
+    output_augmented_json: str = "datasets/Augmented/Cache/LLM_augmented_rp.json",
+    train_cleaned_path: str = "datasets/Augmented/train_cleaned_original.json",
+    train_augmented_path: str = "datasets/Augmented/train_augmented_rp.json",
     temperature: float = 1.0,
 ):
-    """Main routine to generate LLM_augmented.json and datasets/train_augmented.json."""
+    """Main routine to generate LLM_augmented_rp.json and train_augmented_rp.json."""
     api_key = load_api_key()
 
-    if not os.path.exists(curated_path) and os.path.exists("curated_prompt_injections.json"):
-        curated_path = "curated_prompt_injections.json"
+    curated_path = resolve_repo_path(curated_path)
+    output_augmented_json = resolve_repo_path(output_augmented_json)
+    train_cleaned_path = resolve_repo_path(train_cleaned_path)
+    train_augmented_path = resolve_repo_path(train_augmented_path)
     if not os.path.exists(curated_path):
         raise FileNotFoundError(f"Curated file not found: {curated_path}")
 
@@ -492,10 +503,10 @@ def main():
     parser.add_argument("--model", default=GENERATION_MODEL, help=f"Generation model (default: {GENERATION_MODEL})")
     parser.add_argument("--seed", type=int, default=42, help="Deterministic random seed (default: 42)")
     parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature (default: 1.0)")
-    parser.add_argument("--curated-path", default="Augmented/curated_prompt_injections.json", help="Path to curated demos")
-    parser.add_argument("--output-augmented", default="Augmented/LLM_augmented.json", help="Path to save synthetic set")
-    parser.add_argument("--train-cleaned", default="datasets/train_cleaned_oficial.json", help="Path to cleaned dataset")
-    parser.add_argument("--train-augmented", default="datasets/train_augmented.json", help="Path to output train_augmented")
+    parser.add_argument("--curated-path", default="datasets/Augmented/Cache/curated_prompt_injections.json", help="Path to curated demos")
+    parser.add_argument("--output-augmented", default="datasets/Augmented/Cache/LLM_augmented_rp.json", help="Path to save synthetic set")
+    parser.add_argument("--train-cleaned", default="datasets/Augmented/train_cleaned_original.json", help="Path to cleaned dataset")
+    parser.add_argument("--train-augmented", default="datasets/Augmented/train_augmented_rp.json", help="Path to output train_augmented")
     args = parser.parse_args()
 
     run_generation(

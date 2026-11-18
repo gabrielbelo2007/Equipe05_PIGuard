@@ -21,16 +21,21 @@ Procedure:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import random
 import re
-import sys
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Dict, List
+
+CACHE_DIR = Path(__file__).resolve().parent
+MOF_DIR = CACHE_DIR.parent
+REPO_ROOT = CACHE_DIR.parents[2]
 
 MODEL_NAME = "openai/gpt-4o-mini-2024-07-18"
 
@@ -65,13 +70,14 @@ def load_api_key() -> str:
         if val:
             return val.strip().strip("\"'")
 
-    if os.path.exists(".env"):
-        with open(".env", "r", encoding="utf-8") as f:
-            for line in f:
-                if "=" in line:
-                    k, v = line.split("=", 1)
-                    if k.strip().lower() in ("openrouter_api_key", "openai_api_key"):
-                        return v.strip().strip("\"'")
+    for env_path in (REPO_ROOT / ".env", Path(".env")):
+        if env_path.is_file():
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip().lower() in ("openrouter_api_key", "openai_api_key"):
+                            return v.strip().strip("\"'")
 
     raise RuntimeError("API key not found in environment or .env file.")
 
@@ -251,10 +257,18 @@ def run_pipeline_for_dataset(
 
     # Filter out empty or whitespace words
     trigger_words = [w.strip() for w in trigger_words if w and w.strip()]
+    if not trigger_words:
+        raise ValueError(f"Lista de trigger words vazia: {trigger_words_file}")
     print(f"[INFO] Total de trigger words carregadas: {len(trigger_words)}")
 
-    checkpoint_candidates_file = f"MOF/.candidates_{dataset_name}.json"
-    checkpoint_judged_file = f"MOF/.judged_{dataset_name}.json"
+    os.makedirs(os.path.dirname(os.path.abspath(output_mof_file)), exist_ok=True)
+    cache_name = dataset_name
+    legacy_triggers = CACHE_DIR / f"trigger_words_train_augmented_{dataset_name.removeprefix('mof_')}.json"
+    if Path(trigger_words_file).resolve() != legacy_triggers:
+        trigger_digest = hashlib.sha256(json.dumps(trigger_words).encode("utf-8")).hexdigest()
+        cache_name = f"{dataset_name}.{trigger_digest}"
+    checkpoint_candidates_file = CACHE_DIR / f".candidates_{cache_name}.json"
+    checkpoint_judged_file = CACHE_DIR / f".judged_{cache_name}.json"
 
     # --- Step 1: Generate candidates ---
     candidates: List[dict] = []
@@ -338,7 +352,7 @@ def run_pipeline_for_dataset(
     # Order judged items by original id
     all_judged = sorted(judged_dict.values(), key=lambda x: x["id"])
     approved_samples = [item for item in all_judged if item["approved"]]
-    print(f"\n[ESTATÍSTICAS INICIAIS]")
+    print("\n[ESTATÍSTICAS INICIAIS]")
     print(f"  Total avaliado: {len(all_judged)}")
     print(f"  Aprovados (NO - benigno): {len(approved_samples)} ({len(approved_samples)/len(all_judged)*100:.1f}%)")
     print(f"  Rejeitados (YES - risco): {len(all_judged) - len(approved_samples)}")
@@ -414,48 +428,49 @@ def run_pipeline_for_dataset(
 
 def consolidate_datasets():
     """
-    Consolidate MOF datasets with base training sets and save in MOF/ folder:
-    1) train_augmented_oficial.json + MOF_oficial.json -> MOF/train_augmented_mof_oficial.json
-    2) train_augmented.json + MOF.json -> MOF/train_augmented_mof.json
-    3) train_cleaned_oficial.json + MOF_oficial.json -> MOF/train_clean_mof_oficial.json
-    4) train_cleaned_oficial.json + MOF.json -> MOF/train_clean_mof.json
+    Consolidate MOF datasets with base training sets and save in datasets/MOF/:
+    1) train_augmented_original.json + MOF_semi_rp.json -> datasets/MOF/train_augmented_mof_semi_rp.json
+    2) train_augmented_rp.json + MOF_rp.json -> datasets/MOF/train_augmented_mof_rp.json
+    3) train_cleaned_original.json + MOF_semi_rp.json -> datasets/MOF/train_clean_mof_semi_rp.json
+    4) train_cleaned_original.json + MOF_rp.json -> datasets/MOF/train_clean_mof_rp.json
     """
     print(f"\n{'='*70}")
-    print("Iniciando consolidação dos datasets finais na pasta MOF/")
+    print(f"Iniciando consolidação dos datasets finais na pasta {MOF_DIR}")
     print(f"{'='*70}\n")
 
-    os.makedirs("MOF", exist_ok=True)
+    os.makedirs(MOF_DIR, exist_ok=True)
 
     # 1. Load MOF sets
-    with open("MOF/MOF_oficial.json", "r", encoding="utf-8") as f:
-        mof_oficial = json.load(f)
-    with open("MOF/MOF.json", "r", encoding="utf-8") as f:
-        mof = json.load(f)
+    with open(MOF_DIR / "MOF_semi_rp.json", "r", encoding="utf-8") as f:
+        mof_semi_rp = json.load(f)
+    with open(MOF_DIR / "MOF_rp.json", "r", encoding="utf-8") as f:
+        mof_rp = json.load(f)
 
-    print(f"MOF_oficial.json carregado: {len(mof_oficial)} amostras")
-    print(f"MOF.json carregado: {len(mof)} amostras")
+    print(f"MOF_semi_rp.json carregado: {len(mof_semi_rp)} amostras")
+    print(f"MOF_rp.json carregado: {len(mof_rp)} amostras")
 
+    aug_dir = REPO_ROOT / "datasets" / "Augmented"
     # 2. Consolidations definition
     tasks = [
         (
-            "datasets/train_augmented_oficial.json",
-            mof_oficial,
-            "MOF/train_augmented_mof_oficial.json",
+            str(aug_dir / "train_augmented_original.json"),
+            mof_semi_rp,
+            str(MOF_DIR / "train_augmented_mof_semi_rp.json"),
         ),
         (
-            "datasets/train_augmented.json",
-            mof,
-            "MOF/train_augmented_mof.json",
+            str(aug_dir / "train_augmented_rp.json"),
+            mof_rp,
+            str(MOF_DIR / "train_augmented_mof_rp.json"),
         ),
         (
-            "datasets/train_cleaned_oficial.json",
-            mof_oficial,
-            "MOF/train_clean_mof_oficial.json",
+            str(aug_dir / "train_cleaned_original.json"),
+            mof_semi_rp,
+            str(MOF_DIR / "train_clean_mof_semi_rp.json"),
         ),
         (
-            "datasets/train_cleaned_oficial.json",
-            mof,
-            "MOF/train_clean_mof.json",
+            str(aug_dir / "train_cleaned_original.json"),
+            mof_rp,
+            str(MOF_DIR / "train_clean_mof_rp.json"),
         ),
     ]
 
@@ -473,31 +488,47 @@ def consolidate_datasets():
         )
 
 
+def resolve_rp_trigger_words(output_dir: Path) -> Path:
+    base = output_dir / "train_augmented_rp"
+    for name in ("trigger_words_train_augmented_rp.json", "trigger_words_train_augmented.json"):
+        path = base / name
+        if path.is_file():
+            return path
+    return CACHE_DIR / "trigger_words_train_augmented_rp.json"
+
+
 def main():
     parser = argparse.ArgumentParser(description="MOF Data Generation and Consolidation")
     parser.add_argument("--workers", type=int, default=15, help="Número de threads simultâneas")
     parser.add_argument("--skip_gen", action="store_true", help="Pular geração e ir direto para consolidação")
+    parser.add_argument(
+        "--training-output-dir",
+        default=None,
+        help="Saída da primeira fase (padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs).",
+    )
     args = parser.parse_args()
 
-    api_key = load_api_key()
-
     if not args.skip_gen:
-        # Pipeline 1: MOF_oficial.json
+        api_key = load_api_key()
+        output_dir = REPO_ROOT / Path(
+            args.training_output_dir or os.environ.get("PIGUARD_OUTPUT_DIR") or "outputs"
+        ).expanduser()
+        # Pipeline 1: MOF_semi_rp.json
         run_pipeline_for_dataset(
-            dataset_name="mof_oficial",
-            trigger_words_file="MOF/trigger_words_train_augmented_oficial.json",
-            output_mof_file="MOF/MOF_oficial.json",
+            dataset_name="mof_semi_rp",
+            trigger_words_file=str(CACHE_DIR / "trigger_words_train_augmented_semi_rp.json"),
+            output_mof_file=str(MOF_DIR / "MOF_semi_rp.json"),
             api_key=api_key,
             initial_target=1000,
             final_target=762,
             max_workers=args.workers,
         )
 
-        # Pipeline 2: MOF.json
+        # Pipeline 2: MOF_rp.json
         run_pipeline_for_dataset(
-            dataset_name="mof",
-            trigger_words_file="MOF/trigger_words_train_augmented.json",
-            output_mof_file="MOF/MOF.json",
+            dataset_name="mof_rp",
+            trigger_words_file=str(resolve_rp_trigger_words(output_dir)),
+            output_mof_file=str(MOF_DIR / "MOF_rp.json"),
             api_key=api_key,
             initial_target=1000,
             final_target=762,

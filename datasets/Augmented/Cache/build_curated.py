@@ -1,6 +1,15 @@
 import json
+from pathlib import Path
 
-with open('datasets/train_cleaned.json') as f:
+CACHE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = CACHE_DIR.parents[2]
+cleaned_candidates = [
+    REPO_ROOT / "datasets" / "train_cleaned.json",
+    REPO_ROOT / "datasets" / "Augmented" / "train_cleaned_original.json",
+]
+cleaned_path = next((p for p in cleaned_candidates if p.is_file()), cleaned_candidates[1])
+
+with open(cleaned_path, encoding="utf-8") as f:
     data = json.load(f)
 
 injections = [x for x in data if x.get('label') == 1]
@@ -142,6 +151,7 @@ for fmt in format_order:
         })
 
 print(f"SUCCESS! All 17 formats verified. Total items: {len(final_list)}")
-for out_path in ['curated_prompt_injections.json', 'Augmented/curated_prompt_injections.json']:
-    with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(final_list, f, indent=4, ensure_ascii=False)
+out_path = CACHE_DIR / 'curated_prompt_injections.json'
+out_path.parent.mkdir(parents=True, exist_ok=True)
+with open(out_path, 'w', encoding='utf-8') as f:
+    json.dump(final_list, f, indent=4, ensure_ascii=False)

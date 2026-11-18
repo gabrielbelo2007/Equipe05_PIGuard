@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 
-input_path = "./datasets/train.json"
-output_path = "./datasets/train_cleaned.json"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+input_path = REPO_ROOT / "datasets" / "train.json"
+output_path = REPO_ROOT / "datasets" / "train_cleaned.json"
 
 baseline_samples = []
 removed_longtail = 0
