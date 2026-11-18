@@ -64,7 +64,7 @@ DEFAULT_OUTPUT_DIR = Path(
     os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
 ).expanduser()
 
-PAPER_SHORTCUT = {"overdefense": 86.73, "malicious": 65.63, "average": 76.18}
+PAPER_SHORTCUT = {"overdefense": 86.73, "malicious": 65.53, "average": 76.13}
 PAPER_UNAUGMENTED = {"overdefense": 64.31, "malicious": 75.95, "average": 70.13}
 PAPER_MOF = {"overdefense": 87.32, "malicious": 77.39, "average": 82.36}
 
@@ -259,9 +259,12 @@ def evaluate_dataset_batch(
 
 
 def find_dataset_root(custom: str | None = None) -> Path:
+    if custom is not None:
+        path = repo_path(custom)
+        if not path.is_dir():
+            raise FileNotFoundError(f"Diretório de benchmarks não encontrado: {path}")
+        return path
     candidates: list[Path] = []
-    if custom:
-        candidates.append(repo_path(custom))
     candidates.extend(
         [REPO_ROOT / "datasets", SCRIPT_DIR / "datasets", Path.cwd() / "datasets"]
     )
@@ -456,8 +459,8 @@ def run_shortcut_section(
         "paper_reference": {
             "shortcut_mitigation": {
                 "overdefense_acc": 0.8673,
-                "malicious_acc": 0.6563,
-                "average_acc": 0.7618,
+                "malicious_acc": 0.6553,
+                "average_acc": 0.7613,
             },
             "unmitigated_augmented": {
                 "overdefense_acc": 0.6431,
@@ -552,7 +555,7 @@ def run_shortcut_section(
     metrics_names = ["Over-defense (NotInject)", "Malicious (BIPIA)", "Média ((Overdef + Mal)/2)"]
     x = np.arange(len(metrics_names))
     series = [
-        {"name": "Artigo: Shortcut Mitigation", "vals": [86.73, 65.63, 76.18], "color": "#264653"},
+        {"name": "Artigo: Shortcut Mitigation", "vals": [86.73, 65.53, 76.13], "color": "#264653"},
         {"name": "Artigo: MOF (PIGuard)", "vals": [87.32, 77.39, 82.36], "color": "#2A9D8F"},
     ]
     result_original = evaluated_models.get("train_augmented_shortcut_original", {})
@@ -928,7 +931,7 @@ def run_tensor_trust_section(
     hijacking_values: list[float] = []
     extraction_values: list[float] = []
     average_values: list[float] = []
-    for key, info in models.items():
+    for key in models:
         result = evaluated_models.get(key, {})
         if result.get("average_acc") is None:
             continue
@@ -1041,11 +1044,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Instale PyTorch e Transformers conforme requirements.txt."
         )
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset_root = find_dataset_root(args.dataset_root)
+    try:
+        dataset_root = find_dataset_root(args.dataset_root)
+        if args.dataset_root and args.benchmark in ("all", "shortcut"):
+            required = dataset_root / "NotInject_one.json"
+            if not required.is_file():
+                raise FileNotFoundError(f"Benchmark não encontrado: {required}")
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     print(f"Diretório de saída: {output_dir}")

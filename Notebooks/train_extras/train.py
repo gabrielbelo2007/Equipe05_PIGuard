@@ -43,6 +43,7 @@ class ShortcutExperiment:
     name: str
     train_set: str
     trigger_words: str
+    base_experiment: str
     epochs: int = 3
     batch_size: int = 32
     learning_rate: float = 2e-5
@@ -56,11 +57,13 @@ EXPERIMENTS = (
         name="train_augmented_shortcut_original",
         train_set="datasets/Augmented/train_augmented_original.json",
         trigger_words="datasets/MOF/Cache/trigger_words_train_augmented_semi_rp.json",
+        base_experiment="train_augmented_original",
     ),
     ShortcutExperiment(
         name="train_augmented_shortcut_rp",
         train_set="datasets/Augmented/train_augmented_rp.json",
         trigger_words="datasets/MOF/Cache/trigger_words_train_augmented_rp.json",
+        base_experiment="train_augmented_rp",
     ),
 )
 
@@ -70,6 +73,14 @@ EXPERIMENT_BY_NAME = {experiment.name: experiment for experiment in EXPERIMENTS}
 def repo_path(value: str | os.PathLike[str]) -> Path:
     path = Path(value).expanduser()
     return path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
+
+
+def resolve_trigger_words(experiment: ShortcutExperiment, output_dir: Path) -> Path:
+    base_dir = output_dir / experiment.base_experiment
+    candidates = [base_dir / f"trigger_words_{experiment.base_experiment}.json"]
+    if experiment.base_experiment == "train_augmented_rp":
+        candidates.append(base_dir / "trigger_words_train_augmented.json")
+    return find_existing(candidates) or repo_path(experiment.trigger_words)
 
 
 def find_existing(candidates: Iterable[Path]) -> Path | None:
@@ -202,7 +213,8 @@ def compute_group_weights(
 
 
 def preview_group_distribution(
-    experiment: ShortcutExperiment, batch_size_tokens: int = 4096
+    experiment: ShortcutExperiment, batch_size_tokens: int = 4096, *,
+    trigger_path: Path | None = None,
 ) -> None:
     """Pré-visualiza distribuições (z, y) e pesos, como no notebook original."""
     try:
@@ -212,7 +224,8 @@ def preview_group_distribution(
         return
 
     dataset_path = repo_path(experiment.train_set)
-    trigger_path = repo_path(experiment.trigger_words)
+    if trigger_path is None:
+        trigger_path = resolve_trigger_words(experiment, repo_path(DEFAULT_OUTPUT_DIR))
     if not dataset_path.is_file() or not trigger_path.is_file():
         print(f"\n[AVISO] Arquivos ausentes para pré-visualizar {experiment.name}.")
         return
@@ -270,7 +283,7 @@ def run_shortcut_experiment(
         return False
 
     train_set = repo_path(experiment.train_set)
-    trigger_words = repo_path(experiment.trigger_words)
+    trigger_words = resolve_trigger_words(experiment, output_dir)
     if not train_set.is_file():
         raise SystemExit(f"[ERRO] Dataset não encontrado: {train_set}")
     if not trigger_words.is_file():
@@ -452,9 +465,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected_names = tuple(dict.fromkeys(args.experiment or EXPERIMENT_BY_NAME))
@@ -495,7 +506,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print("\n--- Verificação de Datasets e Trigger Words ---")
     for experiment in EXPERIMENTS:
         dataset = repo_path(experiment.train_set)
-        triggers = repo_path(experiment.trigger_words)
+        triggers = resolve_trigger_words(experiment, output_dir)
         print(
             f"[{'OK' if dataset.is_file() else 'AUSENTE'}] {experiment.name} dataset: {dataset}"
         )
@@ -505,7 +516,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if not args.skip_preview:
         for experiment in selected:
-            preview_group_distribution(experiment)
+            preview_group_distribution(
+                experiment, trigger_path=resolve_trigger_words(experiment, output_dir)
+            )
 
     for experiment in selected:
         run_shortcut_experiment(
