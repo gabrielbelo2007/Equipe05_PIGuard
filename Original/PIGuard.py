@@ -22,17 +22,17 @@ class PIGuard(nn.Module):
         logits = self.classifier(pooled_output)
         
         loss = 0
-        loss = self.loss_fct(logits.view(-1, self.classifier.out_features), labels.view(-1))
+        if labels is not None:
+            loss = self.loss_fct(logits.view(-1, self.classifier.out_features), labels.view(-1))
  
         return logits, loss
 
 
-    def classify(self, input_text):
-        tokenzied_text = self.tokenizer(input_text, return_tensors='pt', truncation=True, padding='max_length', max_length=256)
+    def classify(self, input_text, max_length=512):
+        tokenzied_text = self.tokenizer(input_text, return_tensors='pt', truncation=True, padding='max_length', max_length=max_length)
         input_ids = tokenzied_text['input_ids'].to(self.device)
         attention_mask = tokenzied_text['attention_mask'].to(self.device)
         outputs = self.deberta(input_ids=input_ids, attention_mask=attention_mask)['last_hidden_state']
-        sequence_output = outputs
         pooled_output = outputs[:, 0, :]
 
         classification_logits = self.classifier(pooled_output)
