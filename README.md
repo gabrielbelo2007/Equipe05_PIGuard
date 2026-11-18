@@ -171,7 +171,7 @@ Ambiente usado como referência: Google Colab, NVIDIA A100 (80 GB de VRAM). Pyth
 O `requirements.txt` inclui todas as dependências do fluxo principal (`Original/`, `Notebooks/`, `Eval/` e `Corrections/`). Para instalar manualmente apenas o conjunto mínimo desse fluxo em Python 3.10 a 3.12:
 
 ```bash
-python -m pip install torch==2.4.0 transformers==4.44.0 datasets==2.21.0 \
+python -m pip install torch==2.4.0 transformers==4.44.0 datasets==2.21.0 pyarrow==17.0.0 \
     sentencepiece==0.2.0 protobuf==4.25.4 tiktoken==0.7.0 PyYAML==6.0.2 \
     numpy==1.26.3 pandas==2.2.2 matplotlib==3.9.2 tqdm==4.66.5 \
     scikit-learn==1.5.1
@@ -447,7 +447,8 @@ O validador `Eval/reproduction_validation.py` grava um manifesto com hashes dos 
 
 | Sintoma | Causa provável | Ação |
 | :--- | :--- | :--- |
-| `ModuleNotFoundError: torch` / `transformers` | dependências não instaladas | `python -m pip install -r requirements.txt` |
+| `ModuleNotFoundError: torch` / `transformers` | dependências ausentes no Python usado pelo comando. Um alias pode fazer `python` apontar para o sistema mesmo com `(.venv)` no prompt | No Linux, use `./.venv/bin/python -m pip install -r requirements.txt` e execute o script com `./.venv/bin/python`. No Windows, use `.venv\Scripts\python.exe`. |
+| `ImportError: pyarrow requires NumPy 2.0 or newer` | PyArrow incompatível com o NumPy do ambiente principal | Reinstale as dependências de `requirements.txt` no mesmo ambiente do treino. |
 | `checkpoint ausente` | treino não executado ou `--output-dir` diferente | rode a fase de treino correspondente ou informe `--output-dir` |
 | `API key not found` | geração/MOF sem credencial | exporte `OPENROUTER_API_KEY` ou crie `.env` na raiz |
 | `CUDA out of memory` | lote grande para a GPU | reduza `--batch-size` / `--eval-batch-size` |
