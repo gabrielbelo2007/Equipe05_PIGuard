@@ -1,6 +1,15 @@
 import argparse
+from pathlib import Path
 
-def parse_args():
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def repo_path(value: str) -> str:
+    return str((REPO_ROOT / Path(value).expanduser()).resolve())
+
+
+def build_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--name",
@@ -10,17 +19,19 @@ def parse_args():
     )
     parser.add_argument(
         "--train_set",
+        type=repo_path,
         default="datasets/train.json",
         help="The path to the train set file.",
     )
     parser.add_argument(
         "--valid_set",
+        type=repo_path,
         default="datasets/valid.json",
         help="The path to the valid set file.",
     )
     parser.add_argument(
         "--dataset_root",
-        type=str,
+        type=repo_path,
         default='datasets',
         help="For evaluation, the folder to place test sets.",
     )
@@ -41,13 +52,13 @@ def parse_args():
     )
     parser.add_argument(
         "--checkpoint_path",
-        type=str,
+        type=repo_path,
         default='logs',
         help="Path to save the model",
     )
     parser.add_argument(
         "--logs",
-        type=str,
+        type=repo_path,
         default="logs",
         help="Where to store logs. Use None to avoid storing logs.",
     )
@@ -65,7 +76,7 @@ def parse_args():
     parser.add_argument(
         "--resume",
         default=None,
-        type=str,
+        type=repo_path,
         help="The model you want to load. Use None to avoid resume models.",
     )
     parser.add_argument(
@@ -74,6 +85,8 @@ def parse_args():
         default=42, 
         help="Random seed."
     )
-    args = parser.parse_args()
+    return parser
 
-    return args
+
+def parse_args():
+    return build_parser().parse_args()
