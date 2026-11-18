@@ -321,9 +321,12 @@ def evaluate_dataset_batch(
 
 
 def find_dataset_root(custom: str | None = None) -> Path:
+    if custom is not None:
+        path = repo_path(custom)
+        if not (path / "wildguard.json").is_file():
+            raise FileNotFoundError(f"Benchmark wildguard.json não encontrado em: {path}")
+        return path
     candidates: list[Path] = []
-    if custom:
-        candidates.append(repo_path(custom))
     candidates.extend(
         [REPO_ROOT / "datasets", SCRIPT_DIR / "datasets", Path.cwd() / "datasets"]
     )
@@ -892,11 +895,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Instale PyTorch e Transformers conforme requirements.txt."
         )
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset_root = find_dataset_root(args.dataset_root)
+    try:
+        dataset_root = find_dataset_root(args.dataset_root)
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
 
     experiments = build_experiments(output_dir)
 

@@ -83,6 +83,7 @@ MODEL_MAPPING = [
 SYNC_FILES = [
     "table1_validation_raw.json",
     "table1_validation_summary.csv",
+    "table1_validation_report.md",
     "table1_detailed_deltas.csv",
     "table1_comparison.png",
     "table1_all_models_comparison_grid.png",
@@ -143,6 +144,7 @@ def run_validator(
     dataset_root: Path,
     logs_dir: Path,
     *,
+    checkpoint_root: Path,
     openrouter_key: str | None,
     skip_openrouter: bool,
     force_rerun: bool,
@@ -156,8 +158,6 @@ def run_validator(
         "--output_dir", str(logs_dir),
         "--batch_size", str(batch_size),
     ]
-    if openrouter_key:
-        cmd.extend(["--openrouter_key", openrouter_key])
     if skip_openrouter:
         cmd.append("--skip_openrouter")
     if force_rerun:
@@ -167,6 +167,9 @@ def run_validator(
 
     print("\n$ " + " ".join(shlex.quote(part) for part in cmd), flush=True)
     with subprocess_environment([validator.parent]) as env:
+        env["PIGUARD_OUTPUT_DIR"] = str(checkpoint_root)
+        if openrouter_key:
+            env["OPENROUTER_API_KEY"] = openrouter_key
         result = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env)
     if result.returncode != 0:
         raise RuntimeError(
@@ -175,14 +178,11 @@ def run_validator(
 
 
 def sync_results(logs_dir: Path, output_dir: Path) -> None:
-    """Espelha resultados entre logs/Table1 e o diretório de saída."""
-    output_dir.mkdir(parents=True, exist_ok=True)
+    """Publica uma cópia dos relatórios da rodada atual em logs/Table1."""
     for file_name in SYNC_FILES:
         local = logs_dir / file_name
         output = output_dir / file_name
-        if local.is_file():
-            shutil.copy2(local, output)
-        elif output.is_file():
+        if output.is_file() and not (local.exists() and local.samefile(output)):
             shutil.copy2(output, local)
 
 
@@ -199,11 +199,13 @@ def load_raw_results(logs_dir: Path) -> dict[str, dict[str, float]]:
         return {}
 
 
-def load_ablation_results() -> dict[str, dict[str, float]]:
-    candidates = [
-        REPO_ROOT / "logs/MOFs/ablation_results_raw.json",
-        REPO_ROOT / "Eval/MOFs/ablation_results_raw.json",
-    ]
+def load_ablation_results(output_dir: Path) -> dict[str, dict[str, float]]:
+    candidates = [output_dir / "ablation_results_raw.json"]
+    if output_dir == REPO_ROOT / "outputs":
+        candidates.extend([
+            REPO_ROOT / "logs/MOFs/ablation_results_raw.json",
+            REPO_ROOT / "Eval/MOFs/ablation_results_raw.json",
+        ])
     for candidate in candidates:
         if not candidate.is_file():
             continue
@@ -513,9 +515,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Instale com: python -m pip install -r requirements.txt"
         )
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
     dataset_root = (
         repo_path(args.dataset_root)
@@ -525,71 +525,49 @@ def main(argv: Sequence[str] | None = None) -> int:
     logs_dir = REPO_ROOT / "logs/Table1"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    sync_results(logs_dir, output_dir)
-    raw_path = logs_dir / "table1_validation_raw.json"
+    validator = find_validator()
+    if validator is None:
+        parser.error("Eval/validate_models_table1.py não encontrado.")
+    try:
+        run_validator(
+            validator, dataset_root, output_dir, checkpoint_root=output_dir,
+            openrouter_key=args.openrouter_key, skip_openrouter=args.skip_openrouter,
+            force_rerun=args.force_rerun, batch_size=args.batch_size, max_samples=args.max_samples,
+        )
+    except RuntimeError as exc:
+        raise SystemExit(f"[ERRO] {exc}") from exc
 
-    if raw_path.is_file() and not args.force_rerun:
-        print("\n" + "=" * 80)
-        print("🔒 [TRAVA DE SEGURANÇA ATIVA - INFERÊNCIA PULADA]")
-        print(f"Resultados prévios encontrados em: {raw_path}")
-        print("Nenhuma chamada de API será realizada.")
-        print("Use --force-rerun para executar uma nova inferência completa.")
-        print("=" * 80)
-    else:
-        validator = find_validator()
-        if validator is None:
-            raise SystemExit(
-                "[ERRO] Eval/validate_models_table1.py não encontrado. "
-                "Restaure o validador ou informe o caminho manualmente."
-            )
-        print(f"\nDispositivo/datasets: {dataset_root}")
-        print(f"Validador: {validator}")
-        try:
-            run_validator(
-                validator,
-                dataset_root,
-                logs_dir,
-                openrouter_key=args.openrouter_key,
-                skip_openrouter=args.skip_openrouter,
-                force_rerun=args.force_rerun,
-                batch_size=args.batch_size,
-                max_samples=args.max_samples,
-            )
-        except RuntimeError as exc:
-            raise SystemExit(f"[ERRO] {exc}") from exc
-
-    sync_results(logs_dir, output_dir)
-
-    results_raw = load_raw_results(logs_dir)
-    ablation_results = load_ablation_results()
+    results_raw = load_raw_results(output_dir)
+    ablation_results = (
+        load_ablation_results(output_dir)
+        if dataset_root == REPO_ROOT / "datasets" and args.max_samples is None
+        else {}
+    )
     detailed = build_detailed_table(results_raw, ablation_results)
 
     print("\n📋 Comparação Lado a Lado: Artigo vs Reproduzido com Deltas (Δ)")
     print(detailed.to_string(index=False))
 
-    detailed.to_csv(logs_dir / "table1_detailed_deltas.csv", index=False)
     detailed.to_csv(output_dir / "table1_detailed_deltas.csv", index=False)
 
     if results_raw:
         # Tabela resumo (usa o CSV do validador quando disponível).
-        csv_path = logs_dir / "table1_validation_summary.csv"
+        csv_path = output_dir / "table1_validation_summary.csv"
         if csv_path.is_file():
             summary = pd.read_csv(csv_path)
             print("\n📊 Tabela 1: Avaliação Comparativa de Performance e Overhead")
             print(summary.to_string(index=False))
-            shutil.copy2(csv_path, output_dir / "table1_validation_summary.csv")
-        chart_path = logs_dir / "table1_comparison.png"
+        chart_path = output_dir / "table1_comparison.png"
         if chart_path.is_file():
-            shutil.copy2(chart_path, output_dir / "table1_comparison.png")
             print(f"\nGráfico consolidado: {chart_path}")
     else:
         print("\n[AVISO] Nenhum resultado bruto disponível; apenas a tabela de referência foi gerada.")
 
     plot_individual_charts(results_raw, ablation_results, logs_dir, output_dir)
     plot_mosaic(results_raw, ablation_results, output_dir)
+    sync_results(logs_dir, output_dir)
 
-    print(f"\nResultados em: {logs_dir}")
-    print(f"Cópias em: {output_dir}")
+    print(f"\nResultados em: {output_dir}")
     return 0
 
 
