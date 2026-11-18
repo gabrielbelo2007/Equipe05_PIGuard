@@ -40,12 +40,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 
-# ==============================================================================
 # 0. Ancoragem de Caminhos e Módulos Locais
-# ==============================================================================
-# A raiz do repositório é detectada a partir deste arquivo (Eval/..), de modo
-# que o script funcione tanto via `python Eval/validate_models_table1.py` a
-# partir da raiz quanto via `python validate_models_table1.py` dentro de Eval/.
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 # Disponibiliza os módulos locais do projeto (Original/PIGuard.py, util.py,
@@ -94,9 +90,8 @@ except ImportError:
             return self.classifier(pooled_output)
 
 
-# ==============================================================================
 # 1. Valores Oficiais de Referência do Artigo (Tabela 1)
-# ==============================================================================
+
 PAPER_TABLE_1 = {
     "Fmops": {
         "category": "Prompt Guard Model",
@@ -191,9 +186,8 @@ PAPER_TABLE_1 = {
 }
 
 
-# ==============================================================================
 # 2. Carregamento Seguro de Credenciais e Datasets
-# ==============================================================================
+
 def resolve_path(value: Optional[str], default: Path) -> Path:
     """Resolve um caminho contra a raiz do repositório.
 
@@ -674,8 +668,10 @@ def resolve_checkpoint(candidates: List[str]) -> Optional[str]:
     return None
 
 
-def get_cached_ablation_results() -> Dict[str, Any]:
-    path = ROOT_DIR / "logs/MOFs/ablation_results_raw.json"
+def get_cached_ablation_results(checkpoint_root: Path) -> Dict[str, Any]:
+    path = checkpoint_root / "ablation_results_raw.json"
+    if not path.is_file() and checkpoint_root == ROOT_DIR / "outputs":
+        path = ROOT_DIR / "logs/MOFs/ablation_results_raw.json"
     if path.is_file():
         try:
             with path.open("r", encoding="utf-8") as f:
@@ -761,20 +757,6 @@ def main():
         device = "cpu"
     print(f"Dispositivo de hardware em uso: {device}")
 
-    # Verifica se já existem resultados salvos para evitar re-execução e custos de API
-    raw_output_path = output_dir / "table1_validation_raw.json"
-    existing_results = {}
-    if raw_output_path.is_file() and not args.force_rerun:
-        try:
-            with raw_output_path.open("r", encoding="utf-8") as f:
-                existing_results = json.load(f)
-            print(f"\n[TRAVA DE SEGURANÇA ATIVA] Encontrados {len(existing_results)} modelos já avaliados em '{raw_output_path}'.")
-            print("Modelos já salvos serão reutilizados sem nova inferência para economizar créditos e tempo de GPU.")
-            print("(Caso queira reexecutar tudo do zero, passe a flag '--force_rerun').\n")
-        except Exception as e:
-            print(f"[AVISO] Não foi possível ler resultados anteriores: {e}")
-            existing_results = {}
-
     # Carrega credenciais OpenRouter
     api_key = load_api_key(args.openrouter_key)
     if not api_key and not args.skip_openrouter:
@@ -784,7 +766,53 @@ def main():
     # Carrega datasets de avaliação
     print(f"Carregando benchmarks de '{dataset_root}'...")
     datasets = load_evaluation_datasets(str(dataset_root), max_samples=args.max_samples)
+    missing = [name for name, samples in datasets.items() if not samples]
+    if missing:
+        parser.error(f"Benchmarks ausentes ou vazios em {dataset_root}: {', '.join(missing)}")
     print(f"Amostras carregadas: NotInject={len(datasets['NotInject_all'])}, WildGuard={len(datasets['WildGuard'])}, BIPIA={len(datasets['BIPIA_all'])}")
+
+    mof_variants = [
+        ("PIGuard (train_augmented_mof_original)", ["train_augmented_mof_original"]),
+        ("PIGuard (train_augmented_mof_semi_rp)", ["train_augmented_mof_semi_rp", "train_augmented_mof_oficial"]),
+        ("PIGuard (train_augmented_mof_rp)", ["train_augmented_mof_rp", "train_augmented_mof"]),
+    ]
+    checkpoint_root = resolve_path(os.environ.get("PIGUARD_OUTPUT_DIR"), ROOT_DIR / "outputs")
+    checkpoint_roots = [checkpoint_root]
+    if checkpoint_root == ROOT_DIR / "outputs":
+        checkpoint_roots.extend([ROOT_DIR / "checkpoints", ROOT_DIR])
+    checkpoints = {
+        name: resolve_checkpoint([
+            str(root / alias / "best_model.pth")
+            for root in checkpoint_roots for alias in aliases
+        ])
+        for name, aliases in mof_variants
+    }
+    cached_ablation = {}
+    if args.use_cached_piguard and dataset_root == ROOT_DIR / "datasets" and args.max_samples is None:
+        cached_ablation = get_cached_ablation_results(checkpoint_root)
+    cache_inputs = {
+        "benchmarks_sha256": hashlib.sha256(json.dumps(datasets, sort_keys=True).encode()).hexdigest(),
+        "checkpoint_root": str(checkpoint_root),
+        "checkpoints": {},
+        "ablation": cached_ablation,
+        "gpt_model": args.gpt_model,
+        "batch_size": args.batch_size,
+        "device": device,
+    }
+    for name, checkpoint in checkpoints.items():
+        if checkpoint:
+            stat = Path(checkpoint).stat()
+            cache_inputs["checkpoints"][name] = [checkpoint, stat.st_size, stat.st_mtime_ns]
+
+    raw_output_path = output_dir / "table1_validation_raw.json"
+    manifest_path = output_dir / "table1_validation_inputs.json"
+    existing_results = {}
+    if not args.force_rerun and raw_output_path.is_file() and manifest_path.is_file():
+        try:
+            if json.loads(manifest_path.read_text(encoding="utf-8")) == cache_inputs:
+                existing_results = json.loads(raw_output_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            print(f"[AVISO] Não foi possível ler resultados anteriores: {exc}")
 
     all_table_results = {}
 
@@ -878,30 +906,13 @@ def main():
     all_table_results["PIGuard (Ours - Artigo)"] = PAPER_TABLE_1["PIGuard (Artigo)"]
 
     # Avaliação das 3 vertentes train_augmented_mof
-    mof_variants = [
-        ("PIGuard (train_augmented_mof_original)", "train_augmented_mof_original"),
-        ("PIGuard (train_augmented_mof_semi_rp)", "train_augmented_mof_semi_rp"),
-        ("PIGuard (train_augmented_mof_rp)", "train_augmented_mof_rp"),
-    ]
-
-    # Checkpoints locais: respeitam PIGUARD_OUTPUT_DIR e as convenções do
-    # projeto (outputs/<nome>/best_model.pth ou checkpoints/<nome>/best_model.pth).
-    output_root = Path(
-        os.environ.get("PIGUARD_OUTPUT_DIR", ROOT_DIR / "outputs")
-    ).expanduser()
-    checkpoint_roots = [output_root, ROOT_DIR / "checkpoints", ROOT_DIR]
-
-    cached_ablation = get_cached_ablation_results()
-
-    for disp_name, key_name in mof_variants:
+    for disp_name, key_names in mof_variants:
+        key_name = key_names[0]
         if disp_name in existing_results and not args.force_rerun:
             print(f"[REAPROVEITADO] Resultados para '{disp_name}' recuperados do arquivo salvo.")
             all_table_results[disp_name] = existing_results[disp_name]
             continue
-        candidates = [
-            str(root / key_name / "best_model.pth") for root in checkpoint_roots
-        ]
-        ckpt_path = resolve_checkpoint(candidates)
+        ckpt_path = checkpoints[disp_name]
         if ckpt_path:
             print(f"\n{'='*75}\n🛡️ Avaliando Checkpoint Local: {disp_name}\n{'='*75}")
             evaluator = LocalPIGuardEvaluator(ckpt_path, device=device, gflops=60.45)
@@ -952,10 +963,11 @@ def main():
     print(f"Resumo CSV salvo em: {csv_path}")
 
     # Salva JSON Bruto
-    json_path = output_dir / "table1_validation_raw.json"
-    with json_path.open("w", encoding="utf-8") as f:
+    manifest_path.unlink(missing_ok=True)
+    with raw_output_path.open("w", encoding="utf-8") as f:
         json.dump(all_table_results, f, indent=4, ensure_ascii=False)
-    print(f"Resultados JSON salvos em: {json_path}")
+    manifest_path.write_text(json.dumps(cache_inputs, indent=2), encoding="utf-8")
+    print(f"Resultados JSON salvos em: {raw_output_path}")
 
     # Salva Relatório em Markdown
     report_path = output_dir / "table1_validation_report.md"

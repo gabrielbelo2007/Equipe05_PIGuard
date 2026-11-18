@@ -47,16 +47,14 @@ DESIGNS = [('Basic', [75.22,78.53,70.17,74.64]), ('+ Aug',[64.31,81.36,75.95,73.
  ('+ Aug + MOF scratch',[87.32,85.74,77.39,83.48])]
 
 
-def resolve_path(value, default):
+def resolve_path(value, default, *, repo_root=ROOT_DIR):
     """Resolve um caminho contra a raiz do repositório.
 
     Caminhos absolutos são preservados; caminhos relativos são interpretados a
     partir de ``ROOT_DIR`` (nunca do ``cwd`` atual).
     """
-    if value is None or str(value) == "":
-        return Path(default).expanduser().resolve()
-    path = Path(value).expanduser()
-    return path.resolve() if path.is_absolute() else (ROOT_DIR / path).resolve()
+    path = Path(value or default).expanduser()
+    return (repo_root / path).resolve()
 
 
 def read(path):
@@ -98,11 +96,11 @@ def model_for_design(index, variant):
 
 class ValidationRun:
     def __init__(self, repo=None, output=None, legacy=None, batch_size=32, force=False, factory=None):
-        default_output = os.environ.get('PIGUARD_OUTPUT_DIR', ROOT_DIR / 'outputs')
         self.repo = resolve_path(repo, ROOT_DIR)
-        self.output = resolve_path(output, default_output)
+        default_output = os.environ.get('PIGUARD_OUTPUT_DIR') or 'outputs'
+        self.output = resolve_path(output, default_output, repo_root=self.repo)
         self.root = self.output / 'Gráficos'
-        self.legacy = resolve_path(legacy, ROOT_DIR) if legacy else None
+        self.legacy = resolve_path(legacy, self.repo, repo_root=self.repo) if legacy else None
         self.batch_size, self.force, self.factory = batch_size, force, factory
         import torch, transformers
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -122,10 +120,16 @@ class ValidationRun:
 
     def checkpoint_path(self, name):
         """Localiza o checkpoint local, priorizando o diretório de saída."""
+        aliases = [name]
+        if name.endswith('_semi_rp'):
+            aliases.append(name[:-len('_semi_rp')] + '_oficial')
+        elif name.endswith('_rp') and name != 'train_augmented_rp':
+            aliases.append(name[:-len('_rp')])
         for base in (self.output, self.repo / 'checkpoints'):
-            candidate = base / name / 'best_model.pth'
-            if candidate.is_file():
-                return candidate
+            for alias in aliases:
+                candidate = base / alias / 'best_model.pth'
+                if candidate.is_file():
+                    return candidate
         return self.output / name / 'best_model.pth'
 
     def evaluator(self, name):
@@ -506,7 +510,7 @@ def build_parser():
         help='Raiz do repositório (padrão: detectada a partir de Eval/).',
     )
     parser.add_argument(
-        '--output', default=os.environ.get('PIGUARD_OUTPUT_DIR', str(ROOT_DIR / 'outputs')),
+        '--output', default=None,
         help='Diretório de checkpoints e resultados (padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs).',
     )
     parser.add_argument(
