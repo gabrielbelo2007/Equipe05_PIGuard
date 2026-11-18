@@ -17,7 +17,7 @@ def acc_compute(model, target_set, target_class="benign", name="chat"):
         target_label = 1
     
     with torch.no_grad():
-        for idx, sample in enumerate(target_set):
+        for _idx, sample in enumerate(target_set):
             class_logits = model.classify(sample)
             pred = class_logits.argmax().item()
             if pred != target_label:
@@ -57,7 +57,7 @@ def pint_evaluate(model, dataset_root="datasets"):
                 hard_negatives_set.append(sample["text"])
             
             else:
-                ValueError("Wrong Key")
+                raise ValueError("Wrong Key")
 
             benign_set.append(sample["text"])
 
@@ -72,7 +72,7 @@ def pint_evaluate(model, dataset_root="datasets"):
                 jailbreak_set.append(sample["text"])
 
             else:
-                ValueError("Wrong Key")
+                raise ValueError("Wrong Key")
 
             injection_set.append(sample["text"])
 
@@ -128,7 +128,7 @@ def BIPIA_eval(model, dataset_root="datasets"):
 
     return BIPIA_overall_acc, BIPIA_text_acc, BIPIA_code_acc
 
-def NotInject_eval(model, dataset_root="datasets/NotInject_one"):
+def NotInject_eval(model, dataset_root="datasets"):
     benign_set = []
     with open(os.path.join(dataset_root, "NotInject_one.json"), "r") as f:
         valid_dataset = json.load(f)
@@ -199,10 +199,13 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    if not args.resume:
+        raise ValueError("Informe o caminho do checkpoint via --resume.")
     model = PIGuard('microsoft/deberta-v3-base', num_labels=2, device=device)
     model.load_state_dict(torch.load(args.resume, map_location=device), strict=False)
 
     model.to(device)
+    model.eval()
 
     dataset_root = args.dataset_root
     evaluate(model, dataset_root)

@@ -57,7 +57,7 @@ def pint_evaluate(model, dataset_root="datasets"):
                 hard_negatives_set.append(sample["text"])
             
             else:
-                ValueError("Wrong Key")
+                raise ValueError("Wrong Key")
 
             benign_set.append(sample["text"])
 
@@ -72,7 +72,7 @@ def pint_evaluate(model, dataset_root="datasets"):
                 jailbreak_set.append(sample["text"])
 
             else:
-                ValueError("Wrong Key")
+                raise ValueError("Wrong Key")
 
             injection_set.append(sample["text"])
 
@@ -128,7 +128,7 @@ def BIPIA_eval(model, dataset_root="datasets"):
 
     return BIPIA_overall_acc, BIPIA_text_acc, BIPIA_code_acc
 
-def NotInject_eval(model, dataset_root="datasets/NotInject_one"):
+def NotInject_eval(model, dataset_root="datasets"):
     benign_set = []
     with open(os.path.join(dataset_root, "NotInject_one.json"), "r") as f:
         valid_dataset = json.load(f)
