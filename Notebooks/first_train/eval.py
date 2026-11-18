@@ -65,7 +65,7 @@ PAPER_CLEAN = {
 }
 
 PAPER_AUGMENTED = {
-    "NotInject_overall_acc": 0.6331,
+    "NotInject_overall_acc": 0.6431,
     "WildGuard_acc": 0.8136,
     "BIPIA_overall_acc": 0.7595,
     "Overall_acc": 0.7387,
@@ -98,23 +98,18 @@ def build_experiments(output_dir: Path) -> dict[str, dict[str, object]]:
 
     return {
         "Modelo 1 (train_augmented_original)": {
-            "candidates": [
-                *ckpt_candidates("train_augmented_original"),
-                output_dir / "train_augmented_rp" / "best_model.pth",
-                checkpoints / "train_augmented_rp" / "best_model.pth",
-            ],
+            "candidates": ckpt_candidates("train_augmented_original"),
             "trigger_candidates": [
+                output_dir / "train_augmented_original" / "trigger_words_train_augmented_original.json",
                 output_dir / "train_augmented_original" / "trigger_words_train_augmented_oficial.json",
                 REPO_ROOT / "MOF" / "trigger_words_train_augmented_oficial.json",
-                output_dir / "train_augmented_original" / "trigger_words_train_augmented_original.json",
-                output_dir / "train_augmented_rp" / "trigger_words_train_augmented.json",
-                REPO_ROOT / "MOF" / "trigger_words_train_augmented.json",
             ],
             "description": "Baseline + LLM Augmented Oficial do Artigo (PIGuard oficial)",
         },
         "Modelo 2 (train_augmented_rp)": {
             "candidates": ckpt_candidates("train_augmented_rp"),
             "trigger_candidates": [
+                output_dir / "train_augmented_rp" / "trigger_words_train_augmented_rp.json",
                 output_dir / "train_augmented_rp" / "trigger_words_train_augmented.json",
                 REPO_ROOT / "MOF" / "trigger_words_train_augmented.json",
             ],
@@ -239,9 +234,12 @@ def evaluate_dataset_batch(
 
 def find_dataset_root(custom: str | None = None) -> Path:
     """Localiza a pasta ``datasets`` de forma independente do diretório atual."""
+    if custom is not None:
+        path = repo_path(custom)
+        if not (path / "wildguard.json").is_file():
+            raise FileNotFoundError(f"Benchmark wildguard.json não encontrado em: {path}")
+        return path
     candidates: list[Path] = []
-    if custom:
-        candidates.append(repo_path(custom))
     candidates.extend(
         [
             REPO_ROOT / "datasets",
@@ -416,7 +414,7 @@ def plot_comparison(
         },
         {
             "name": "Modelo Augmented (Artigo)",
-            "vals": [63.31, 81.36, 75.95, 73.87],
+            "vals": [64.31, 81.36, 75.95, 73.87],
             "color": "#E76F51",
             "hatch": "\\\\",
         },
@@ -534,11 +532,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Instale PyTorch e Transformers conforme requirements.txt."
         )
 
-    output_dir = (
-        repo_path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_DIR.resolve()
-    )
+    output_dir = repo_path(args.output_dir or DEFAULT_OUTPUT_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset_root = find_dataset_root(args.dataset_root)
+    try:
+        dataset_root = find_dataset_root(args.dataset_root)
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     print(f"Diretório de saída: {output_dir}")
