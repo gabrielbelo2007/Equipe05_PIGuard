@@ -1,9 +1,11 @@
+import os
 import torch
 import yaml
 import json
 import random
 import numpy as np
 import logging
+from pathlib import Path
 
 def compute_accuracy(predictions, labels):
     correct = predictions == labels
@@ -45,6 +47,9 @@ def get_logger(filename=None):
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
     if filename is not None:
+        log_dir = os.path.dirname(filename)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
         handler = logging.FileHandler(filename)
         handler.setLevel(logging.DEBUG)
         handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s: %(message)s'))
@@ -62,5 +67,15 @@ def yaml_to_json(yaml_file, json_file):
 
 
 if __name__ == "__main__":
-    # format to PINT.json, change the path to your original pint file, and output path
-    yaml_to_json('datasets/pint-v1.0.1-679dd3c2.yaml', 'datasets/PINT.json')
+    import argparse
+
+    from params import repo_path
+
+    parser = argparse.ArgumentParser(description="Converte o dataset opcional PINT de YAML para JSON.")
+    parser.add_argument("--input", type=repo_path, default="datasets/pint-v1.0.1-679dd3c2.yaml")
+    parser.add_argument("--output", type=repo_path, default="datasets/PINT.json")
+    args = parser.parse_args()
+    if not Path(args.input).is_file():
+        parser.error(f"Arquivo PINT não encontrado: {args.input}")
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    yaml_to_json(args.input, args.output)
