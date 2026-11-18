@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from PIGuard import PIGuard
 from datasets import load_dataset
 from util import set_seed, get_logger, compute_accuracy
-from params import build_parser
+from params import build_parser, repo_path
 from eval import evaluate
 
 
@@ -15,7 +15,7 @@ def parse_shortcut_args():
     parser = build_parser()
     parser.description = "PIGuard - Shortcut Mitigation via Group Loss Reweighting"
     parser.add_argument(
-        "--trigger_words", type=str, required=True,
+        "--trigger_words", type=repo_path, required=True,
         help="JSON file with trigger words extracted from the augmented checkpoint.",
     )
     parser.add_argument(
