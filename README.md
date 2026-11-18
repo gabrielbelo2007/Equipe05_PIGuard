@@ -13,148 +13,451 @@ Este repositório contém o projeto de reprodução experimental do artigo **"PI
 Os modelos de salvaguarda (*guardrails*) contra ataques de injeção de prompt (ex.: ProtectAIv2, PromptGuard, Fmops) frequentemente sofrem de **sobredefesa (*over-defense*)**: classificam entradas legítimas e benignas como ataques devido à dependência excessiva de atalhos (*shortcut learning*) associados a palavras de gatilho (*trigger words*, como *"ignore"*, *"cancel"*, *"system"* ou *"execute"*).
 
 O artigo propõe duas contribuições centrais:
-1. **Benchmark NotInject**: Dataset de avaliação composto por 339 amostras benignas desafiadoras contendo palavras de gatilho frequentes em ataques, divididas em 3 níveis de dificuldade (1, 2 e 3 palavras-gatilho).
-2. **MOF (*Mitigating Over-defense for Free*)**: Estratégia de treinamento sem necessidade de datasets manuais de sobredefesa. Consiste em:
-   - Treinar uma base supervisionada inicial.
-   - Realizar uma varredura token por token (*token-wise recheck*) para detectar quais vocábulos isolados ativam o classificador como injeção.
-   - Sintetizar frases benignas contendo essas palavras com o auxílio de um LLM.
-   - Retreinar o modelo do zero (*retrain from scratch*) com essa ampliação de dados.
+
+1. **Benchmark NotInject**: dataset de avaliação com 339 amostras benignas desafiadoras contendo palavras de gatilho frequentes em ataques, divididas em 3 níveis de dificuldade (1, 2 e 3 palavras-gatilho).
+2. **MOF (*Mitigating Over-defense for Free*)**: estratégia de treinamento sem datasets manuais de sobredefesa. Consiste em:
+   - treinar uma base supervisionada inicial;
+   - realizar uma varredura token por token (*token-wise recheck*) para detectar quais vocábulos isolados ativam o classificador como injeção;
+   - sintetizar frases benignas contendo essas palavras com o auxílio de um LLM;
+   - retreinar o modelo do zero (*retrain from scratch*) com essa ampliação de dados.
 
 ### Objetivos deste Trabalho
-* [ ] Replicar o pipeline de dados de treino básico e a ampliação de formatos em cauda longa (XML, CSV, JSON, Markdown).
-* [ ] Reproduzir o procedimento *token-wise recheck* para identificar tokens enviesados.
-* [ ] Executar o treinamento do classificador baseado em `microsoft/deberta-v3-base`.
-* [ ] Avaliar e comparar o modelo contra baselines abertos no dataset **NotInject**, medindo acurácia nas 3 dimensões: **Benigna**, **Maliciosa** e **Sobredefesa**.
+
+* [x] Replicar o pipeline de dados de treino básico e a ampliação de formatos em cauda longa (XML, CSV, JSON, Markdown).
+* [x] Reproduzir o procedimento *token-wise recheck* para identificar tokens enviesados.
+* [x] Implementar o treinamento do classificador baseado em `microsoft/deberta-v3-base`.
+* [x] Implementar a avaliação e comparação contra baselines abertos no dataset **NotInject**, medindo acurácia nas 3 dimensões: **Benigna**, **Maliciosa** e **Sobredefesa**.
 
 ---
 
 ## 🏗️ 2. Estrutura do Projeto
 
 ```text
-ainda a se colocar
+Equipe05_PIGuard/
+├── README.md
+├── requirements.txt
+├── .gitignore
+│
+├── Original/                         # Implementação de referência do PIGuard
+│   ├── PIGuard.py                    # Arquitetura DeBERTa-v3 + classificador
+│   ├── train.py                      # Treino base (Original/train.py)
+│   ├── train_shortcut.py             # Treino com mitigação de atalhos
+│   ├── eval.py                       # Avaliação local (NotInject, WildGuard, BIPIA, PINT opcional)
+│   ├── eval_hf.py                    # Avaliação de modelos Hugging Face
+│   ├── params.py                     # Argumentos de treino
+│   └── util.py                       # Seed, logger, acurácia e conversão PINT
+│
+├── Notebooks/                        # Conversões dos notebooks Colab para scripts
+│   ├── first_train/
+│   │   ├── train.py                  # 3 treinos da primeira fase
+│   │   ├── eval.py                   # Avaliação dos 3 modelos da primeira fase
+│   │   ├── new_train.py              # Variante histórica com nomes legados
+│   │   └── new_eval.py               # Avaliação da variante histórica
+│   ├── second_train/
+│   │   ├── train.py                  # 9 treinos do estudo de ablação com MOF
+│   │   ├── eval.py                   # Reconstrução da Tabela 2
+│   │   └── eval_table1.py            # Tabela 1 + variantes MOF
+│   └── train_extras/
+│       ├── train.py                  # 2 treinos de Shortcut Mitigation
+│       └── eval.py                   # Shortcut Mitigation + Tensor Trust
+│
+├── Eval/                             # Avaliação consolidada e validadores
+│   ├── validate_models_table1.py     # Validador da Tabela 1 e baselines
+│   └── reproduction_validation.py    # 5 blocos de validação da reprodução
+│
+├── Corrections/                      # Pipeline independente de correções/verificação
+│   ├── corrections.py                # Orquestrador: geração, treino, recheck, MOF e comparação
+│   ├── generate_mof_data.py          # Geração do MOF a partir de trigger words
+│   ├── renew_token_recheck.py        # Token-wise recheck sanitizado
+│   └── Upgrade_augmented/
+│       ├── new_generate_data.py      # Geração de 435 amostras em 17 categorias
+│       ├── filters.py                # Quatro filtros de validação (biblioteca)
+│       ├── filter_data.py            # Alias de compatibilidade para filters.py
+│       └── LLM_augmented_new.json    # Artefato histórico; não é lido pelo fluxo novo
+│
+├── Upgrade/                          # Pipeline avançado: Novo MOF v2 + Laya English
+│   ├── upgrade_pipeline.py           # Orquestrador CLI completo (Etapa 0 + Tópicos 1–3)
+│   ├── step0_new_mof_and_heldout.py  # Pool do Novo MOF (v2) e separação held-out disjunta
+│   ├── laya_english_cascade.py       # Cascata seletiva Laya English + calibração + Bootstrap
+│   ├── topic1_rp_laya_evaluation.py  # Tópico 1: avaliação dos 5 modelos rp com Laya
+│   ├── topic2_corrected_new_mof.py   # Tópico 2: treino scratch base corrigida + MOF v2
+│   ├── topic3_consolidated_report.py # Tópico 3: consolidação de tabelas, ICs e gráficos
+│   ├── corrected_comparison.py       # Comparação unificada da linhagem corrected
+│   ├── run_corrected_comparison.py   # Runner CLI para corrected_comparison.py
+│   ├── test_upgrade_pipeline.py      # Suíte de testes unitários e integração do Upgrade
+│   ├── requirements.txt              # Requisitos específicos do Upgrade (transformers>=4.48,<5)
+│   ├── upgrade_pipeline.ipynb        # Notebook Colab/local do pipeline Upgrade
+│   └── corrected_comparison.ipynb    # Notebook Colab/local da comparação corrected
+│
+└── datasets/                         # Dados versionados
+    ├── train.json                    # Base de treino combinada (76.735 amostras)
+    ├── valid.json                    # Validação (144 amostras)
+    ├── wildguard.json                # Benignos para avaliação (971 amostras)
+    ├── NotInject_one.json            # NotInject 1 palavra-gatilho (113 amostras)
+    ├── NotInject_two.json            # NotInject 2 palavras-gatilho (113 amostras)
+    ├── NotInject_three.json          # NotInject 3 palavras-gatilho (113 amostras)
+    ├── BIPIA_text.json               # BIPIA texto: 15 grupos × 5 (75 amostras)
+    ├── BIPIA_code.json               # BIPIA código: 10 grupos × 5 (50 amostras)
+    ├── tensor_trust.json             # Tensor Trust combinado (1.346 amostras)
+    ├── tensor_trust_hijacking.json   # Tensor Trust hijacking (776 amostras)
+    ├── tensor_trust_extraction.json  # Tensor Trust extraction (570 amostras)
+    ├── clean_train_dataset.py        # Gera a base limpa a partir de train.json
+    ├── Augmented/
+    │   ├── train_cleaned_original.json    # Base limpa oficial (75.538 amostras)
+    │   ├── train_augmented_original.json  # Base + aumento oficial (75.973 amostras)
+    │   ├── train_augmented_rp.json        # Base + aumento reproduzido (75.973 amostras)
+    │   └── Cache/
+    │       ├── build_curated.py           # Seleciona demonstrações do aumento
+    │       ├── generate_data_rp.py        # Gerador de dados aumentados
+    │       ├── LLM_augmented_rp.json      # 435 amostras aumentadas reproduzidas
+    │       └── curated_prompt_injections.json  # 110 demonstrações
+    └── MOF/
+        ├── MOF_original.json              # 762 amostras MOF oficiais
+        ├── MOF_semi_rp.json               # 762 amostras MOF semi-reproduzidas
+        ├── MOF_rp.json                    # 762 amostras MOF reproduzidas
+        ├── train_clean_mof_original.json  # Base limpa + MOF (76.300)
+        ├── train_clean_mof_semi_rp.json   # Base limpa + MOF (76.300)
+        ├── train_clean_mof_rp.json        # Base limpa + MOF (76.300)
+        ├── train_augmented_mof_semi_rp.json  # Base aumentada + MOF (76.735)
+        ├── train_augmented_mof_rp.json       # Base aumentada + MOF (76.735)
+        └── Cache/
+            ├── generate_mof_data.py       # Gerador de MOF
+            ├── token_recheck.py           # Token-wise recheck de referência
+            ├── trigger_words_train_augmented_rp.json      # 629 tokens
+            └── trigger_words_train_augmented_semi_rp.json # 427 tokens
 ```
+
+> **Artefatos gerados:** `outputs/`, `checkpoints/`, `logs/`, `Eval/ShortcutMitigation/` e `Eval/TensorTrust/` são criados em tempo de execução. Checkpoints e modelos não são versionados (`.gitignore`); os resultados numéricos da reprodução também não acompanham este checkout.
 
 ---
 
 ## ⚙️ 3. Ambiente e Pré-requisitos
+
+```text
+Ambiente usado como referência: Google Colab, NVIDIA A100 (80 GB de VRAM). Python 3.12
 ```
-  Rodamos o modelo no google colab em uma A100(80GB de VRAM)
-```
+
 ### Requisitos de Hardware
-* **GPU**: Mínimo de 16 GB de VRAM (NVIDIA T4, RTX 3090, A100 ou equivalente) para treinamento do `DeBERTa-v3-base` com tamanho de lote 32 e context length de 512.
-* **Espaço em disco**: ~20 GB livres para datasets, modelos base e checkpoints.
+
+* **GPU**: mínimo de 16 GB de VRAM (NVIDIA T4, RTX 3090, A100 ou equivalente) para treinar o `DeBERTa-v3-base` com `batch_size=32` e `max_length=512`. Os scripts também executam em CPU, mas o treinamento completo é muito mais lento.
+* **Espaço em disco**: cerca de 20 GB livres para datasets, cache do Hugging Face, checkpoints e resultados. Os dados versionados ocupam aproximadamente 370 MB; cada `best_model.pth` do DeBERTa-v3-base ocupa cerca de 440 MB.
+* **Rede**: o primeiro uso baixa `microsoft/deberta-v3-base`, os baselines da Tabela 1 e o Tensor Trust do Hugging Face. Modelos restritos, como o Prompt Guard, exigem acesso concedido na conta do Hugging Face.
 
 ### Instalação
 
 1. Clone este repositório:
    ```bash
-   git clone https://github.com/seu-usuario/piguard-reproduction.git
-   cd piguard-reproduction
+   git clone https://github.com/gabrielbelo2007/Equipe05_PIGuard.git
+   cd Equipe05_PIGuard
    ```
 
 2. Crie e ative um ambiente virtual:
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # No Windows: venv\Scripts\activate
+   python3 -m venv .venv
+   source .venv/bin/activate  # No Windows: .venv\Scripts\activate
    ```
 
 3. Instale as dependências:
    ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
    ```
+
+   Para executar o fluxo `Upgrade/` (que utiliza `ModernBERT-large` via Laya English e requer `transformers>=4.48.0,<5.0.0`), instale em um ambiente separado:
+   ```bash
+   python -m pip install -r Upgrade/requirements.txt
+   ```
+
+O `requirements.txt` inclui todas as dependências do fluxo principal (`Original/`, `Notebooks/`, `Eval/` e `Corrections/`). Para instalar manualmente apenas o conjunto mínimo desse fluxo em Python 3.10 a 3.12:
+
+```bash
+python -m pip install torch==2.4.0 transformers==4.44.0 datasets==2.21.0 \
+    sentencepiece==0.2.0 protobuf==4.25.4 tiktoken==0.7.0 PyYAML==6.0.2 \
+    numpy==1.26.3 pandas==2.2.2 matplotlib==3.9.2 tqdm==4.66.5 \
+    scikit-learn==1.5.1
+```
+
+Para GPU NVIDIA, instale um driver compatível com a distribuição CUDA do PyTorch. Consulte as [instruções do PyTorch](https://pytorch.org/get-started/previous-versions/#v240).
+
+### Credenciais
+
+A geração de dados aumentados, a geração de MOF e parte da Tabela 1 usam a API do OpenRouter (modelo `openai/gpt-4o-mini-2024-07-18` por padrão). Informe a chave de uma destas formas:
+
+```bash
+export OPENROUTER_API_KEY="sua-chave"
+# ou
+export OPENAI_API_KEY="sua-chave"
+```
+
+Também é aceito um arquivo `.env` na raiz do projeto:
+
+```dotenv
+OPENROUTER_API_KEY=sua-chave
+```
+
+O `.env` é ignorado pelo Git. As avaliações locais e o token recheck não fazem chamadas de API.
 
 ---
 
-## 4. Executar os notebooks convertidos no Linux
+## 🚀 4. Guia de Execução Passo a Passo
 
-Os nove scripts em `Scripts/first_train/`, `Scripts/second_train/` e
-`Scripts/train_extras/` podem ser chamados individualmente com `python3`.
-Use o caminho absoluto do script para chamá-lo de outro diretório. Os caminhos
-relativos passados como argumentos são interpretados a partir da raiz deste
-projeto. Cada script aceita `--help`.
+Para chamar as CLIs de outro diretório, use o caminho absoluto do script. Caminhos locais relativos passados como argumentos são resolvidos a partir da raiz do repositório. Use `--help` para consultar os argumentos de cada CLI.
 
-Para instalar apenas as dependências usadas pelos scripts, use Python 3.10 a
-3.12 em um ambiente virtual. Os pacotes abaixo já constam no
-`requirements.txt`. O arquivo completo também inclui dependências de outros
-fluxos do projeto.
+### 4.1 Primeira fase: treino base
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install torch==2.4.0 transformers==4.44.0 datasets==2.21.0 \
-    sentencepiece==0.2.0 protobuf==4.25.4 tiktoken==0.7.0 PyYAML==6.0.2 \
-    numpy==1.26.3 pandas==2.2.2 matplotlib==3.9.2 tqdm==4.66.5
-```
+A primeira fase treina três checkpoints:
 
-Para usar uma GPU NVIDIA, instale um driver compatível com a distribuição
-CUDA do PyTorch. Os scripts também executam em CPU.
-[Instruções do PyTorch](https://pytorch.org/get-started/previous-versions/#v240)
-
-Os treinos chamam os programas Python do checkout local de `RP_PIGuard`. Os
-scripts procuram esse checkout dentro do projeto ou nos dois diretórios
-superiores. Use `RP_PIGUARD_DIR` para indicar outro caminho até um checkout
-com o nome `RP_PIGuard`. Os datasets de treino são procurados primeiro em
-`datasets/` neste projeto e depois no checkout de reprodução.
-
-Exemplos a partir da raiz do projeto
+| Experimento | Dataset |
+|---|---|
+| `train_cleaned_original` | `datasets/Augmented/train_cleaned_original.json` |
+| `train_augmented_original` | `datasets/Augmented/train_augmented_original.json` |
+| `train_augmented_rp` | `datasets/Augmented/train_augmented_rp.json` |
 
 ```bash
-python3 Scripts/first_train/train.py --experiment train_augmented_original
-python3 Scripts/second_train/train.py --experiment train_augmented_mof_finetuning_original
-python3 Scripts/second_train/eval.py
-python3 Scripts/second_train/eval_table1.py --skip-openrouter
-python3 Scripts/train_extras/eval.py --benchmark tensor-trust
+python Notebooks/first_train/train.py
+python Notebooks/first_train/train.py --experiment train_augmented_original
+python Notebooks/first_train/train.py --force-retrain
 ```
 
-- Os scripts de treino executam todos os experimentos por padrão. Use
-  `--experiment` para selecionar um deles. Use `--train-set` com um único
-  experimento para apontar a versão correta do dataset. Se já houver um
-  checkpoint e você quiser substituí-lo, use também `--force-retrain`.
-- Os pesos e as trigger words ficam em `checkpoints/<experimento>/` ou no
-  diretório definido por `PIGUARD_OUTPUT_DIR`. Os logs e relatórios ficam em
-  `logs/`. Nas avaliações, use `--output-dir` para indicar outro destino.
-- O fine-tuning MOF requer os pesos de base produzidos na primeira etapa. As
-  avaliações locais precisam dos checkpoints dos experimentos correspondentes.
-  A Tabela 1, a Tabela 2 e as avaliações extras podem reutilizar métricas
-  salvas quando disponíveis.
-- A variante `first_train/new_train.py` espera os datasets legados
-  `train_augmented.json`, `train_new_augmented.json` e `train_cleaned.json`.
-  Forneça esses arquivos em `datasets/` ou use `--train-set` por experimento.
-- O primeiro uso dos modelos e do Tensor Trust requer acesso ao Hugging Face
-  quando os arquivos ainda estão fora do cache local. Modelos restritos, como
-  Prompt Guard na Tabela 1, exigem acesso concedido à conta do Hugging Face.
-  As chamadas ao OpenRouter na Tabela 1 usam `OPENROUTER_API_KEY` ou
-  `OPENAI_API_KEY` do ambiente ou do arquivo `.env` na raiz.
-- O validador preserva os identificadores OpenRouter usados pela reprodução.
-  A linha histórica `Llama-2-chat` executa `meta-llama/llama-3.1-8b-instruct`
-  e a linha `LlamaGuard3` executa `meta-llama/llama-guard-4-12b`.
+Os checkpoints, logs e trigger words são gravados em `outputs/<experimento>/` (ou em `PIGUARD_OUTPUT_DIR`). Ao final, o token-wise recheck é executado para os modelos aumentados; use `--skip-token-recheck` para omiti-lo.
+
+O gerador MOF lê as trigger words da rodada reproduzida em `<saída>/train_augmented_rp/`. Se usou `--output-dir` no treino, passe o mesmo caminho ao gerador via `--training-output-dir`. A variante semi-reproduzida usa as trigger words oficiais de `datasets/MOF/Cache/`. Use `--skip_gen` para consolidar os conjuntos MOF já disponíveis localmente, sem credenciais.
+
+A variante histórica `Notebooks/first_train/new_train.py` mantém os nomes antigos (`train_augmented`, `train_new_augmented`, `train_cleaned`) e usa automaticamente os datasets atuais quando os arquivos legados não existem.
+
+### 4.2 Segunda fase: ablação com MOF
+
+A segunda fase executa os nove treinamentos da Tabela 2, em três vertentes:
+
+| Vertente | Significado |
+|---|---|
+| Original | datasets oficiais do artigo |
+| Semi-Reprodução (`semi_rp`) | trigger words oficiais e geração parcialmente reproduzida |
+| Reproduzida (`rp`) | pipeline inteiramente reproduzido |
+
+```bash
+python Notebooks/second_train/train.py
+python Notebooks/second_train/train.py --experiment train_augmented_mof_original
+python Notebooks/second_train/train.py --experiment train_clean_mof_rp --force-retrain
+```
+
+Os experimentos de fine-tuning (`train_augmented_mof_finetuning_*`) dependem dos checkpoints base da primeira fase. Os demais usam os datasets já consolidados em `datasets/MOF/`.
+
+### 4.3 Shortcut Mitigation e benchmarks extras
+
+```bash
+python Notebooks/train_extras/train.py
+python Notebooks/train_extras/train.py --experiment train_augmented_shortcut_rp
+python Notebooks/train_extras/eval.py --benchmark shortcut
+python Notebooks/train_extras/eval.py --benchmark tensor-trust
+python Notebooks/train_extras/eval.py --benchmark all --force-reevaluate
+```
+
+O treino de shortcut mitigation usa `Original/train_shortcut.py` e procura as trigger words da primeira fase no mesmo diretório de saída. As listas versionadas servem como fallback. A avaliação extra carrega o Tensor Trust local quando disponível e grava resultados em `Eval/ShortcutMitigation/` e `Eval/TensorTrust/`.
+
+### 4.4 Avaliações
+
+```bash
+# Modelos da primeira fase: comparação entre limpo, aumentado oficial e aumentado reproduzido
+python Notebooks/first_train/eval.py
+
+# Tabela 2: ablação completa com MOF
+python Notebooks/second_train/eval.py
+
+# Tabela 1 e variantes MOF (sem chamadas OpenRouter)
+python Notebooks/second_train/eval_table1.py --skip-openrouter
+
+# Validador direto da Tabela 1 (baselines Hugging Face + variantes PIGuard)
+python Eval/validate_models_table1.py --skip_openrouter
+
+# Cinco blocos de validação da reprodução (sem chamadas de API)
+python Eval/reproduction_validation.py
+```
+
+* `Notebooks/first_train/eval.py` grava `evaluation_comparison_table.csv`, `evaluation_comparison_raw.json` e o gráfico comparativo no diretório de saída.
+* `Notebooks/second_train/eval.py` grava `logs/MOFs/ablation_table_2_summary.csv`, `logs/MOFs/ablation_table_2_detailed_deltas.csv`, JSONs brutos e gráficos. Use `--force-reevaluate` para ignorar o cache.
+* `Notebooks/second_train/eval_table1.py` busca os checkpoints e grava os resultados no diretório de saída da rodada, com cópias dos relatórios principais em `logs/Table1/`. Resultados com as mesmas entradas podem ser reaproveitados. Use `--force-rerun` para recalcular.
+* `Eval/reproduction_validation.py` organiza os resultados em `outputs/Gráficos/` com cinco blocos: Tabelas 1 e 7, Tabela 2 (desenhos 1 e 2), Tabela 2 completa, Tabela 3 (shortcut) e Tensor Trust. Use `--skip-recheck` para não regerar trigger words e `--models` para restringir os modelos.
+
+### 4.5 Pipeline de correções
+
+`Corrections/` é um fluxo independente de correção e verificação. Ele:
+
+1. gera 435 amostras aumentadas em 17 categorias e aplica quatro filtros;
+2. treina base limpa, aumento publicado e aumento corrigido;
+3. executa token recheck nos três checkpoints;
+4. gera MOF e retreina a variante corrigida com MOF;
+5. compara os modelos com a versão oficial do Hugging Face (`leolee99/PIGuard`).
+
+```bash
+# Pipeline completo
+python Corrections/corrections.py
+
+# Reutiliza o LLM_augmented.json já gerado
+python Corrections/corrections.py --skip-generation
+
+# Sem baixar/avaliar o PIGuard oficial do Hugging Face
+python Corrections/corrections.py --skip-hf
+
+# Diretório de saída alternativo
+python Corrections/corrections.py --output-dir /caminho/para/saida
+```
+
+Por padrão, os artefatos ficam em `Corrections/outputs/`. Também é possível usar `PIGUARD_OUTPUT_DIR` e `--reference-output-root` para reaproveitar checkpoints de uma execução anterior.
+
+Scripts auxiliares:
+
+```bash
+# Geração de MOF a partir de uma lista de trigger words
+python Corrections/generate_mof_data.py \
+    --trigger_words Corrections/outputs/augmented_corrected/trigger_words.json \
+    --output Corrections/outputs/augmented_corrected/MOF.json
+
+# Token recheck de um checkpoint
+python Corrections/renew_token_recheck.py \
+    --checkpoint outputs/train_augmented_original/best_model.pth \
+    --output outputs/train_augmented_original/trigger_words.json
+
+# Geração de dados aumentados com os quatro filtros
+python Corrections/Upgrade_augmented/new_generate_data.py \
+    --output-dir Corrections/outputs/augmented
+```
+
+`filters.py` e `filter_data.py` são bibliotecas: o filtro 3 usa OpenRouter quando chamado, mas não têm execução principal. O arquivo `Corrections/Upgrade_augmented/LLM_augmented_new.json` é histórico e não é usado pelo fluxo novo.
+
+### 4.6 Pipeline Upgrade (Novo MOF v2 + Laya English)
+
+O módulo `Upgrade/` estende a reprodução com a geração estratificada do Novo MOF (`MOF_v2_train.json`), conjunto de calibração disjunto (`calibration_heldout.json`) e cascata seletiva com Laya English (`convaiinnovations/laya`, calibrada via temperatura $T^*$ e limiar $T_L^*$):
+
+```bash
+# Dry-run dos caminhos resolvidos
+python Upgrade/upgrade_pipeline.py --dry-run
+python Upgrade/run_corrected_comparison.py --dry-run
+
+# Pipeline completo (requer OPENROUTER_API_KEY na Etapa 0 e ambiente Upgrade/requirements.txt)
+python Upgrade/upgrade_pipeline.py
+
+# Comparação focada na linhagem corrected
+python Upgrade/run_corrected_comparison.py
+
+# Testes unitários e de integração do módulo Upgrade
+python -m unittest Upgrade/test_upgrade_pipeline.py -v
+```
+
+Os artefatos são gravados por padrão em `Upgrade/outputs/` (substituível por `PIGUARD_UPGRADE_OUTPUT` ou `--output-dir`).
+
+Use `PIGUARD_RP_OUTPUT` ou `PIGUARD_OUTPUT_DIR` para indicar a saída dos treinos reproduzidos. Se executou o Corrections em uma pasta personalizada, indique-a com `PIGUARD_CORRECTIONS_DIR`. Para abrir os notebooks locais a partir de outra pasta, defina `PIGUARD_REPO_ROOT` com o caminho do checkout.
+
+### 4.7 Diretórios de saída e cache
+
+* `outputs/` é o destino padrão dos checkpoints, trigger words e avaliações dos `Notebooks/` e de `Eval/`.
+* `PIGUARD_OUTPUT_DIR` substitui esse destino; `--output-dir` tem precedência quando informado.
+* `logs/Table1/` e `logs/MOFs/` guardam resultados e gráficos das avaliações de Tabela 1 e Tabela 2.
+* `Eval/ShortcutMitigation/` e `Eval/TensorTrust/` guardam as avaliações extras.
+* As avaliações reutilizam resultados compatíveis. Para forçar recálculo, use `--force-reevaluate` ou `--force-rerun`; para retreinar, use `--force-retrain`.
+* Os manifestos incluem seed, `max_length`, hash dos datasets, hash do checkpoint e versões do ambiente, permitindo verificar a compatibilidade do cache.
 
 ---
 
 ## 📊 5. Resultados e Comparação
 
-Tabela comparativa entre os resultados reportados no artigo original (ACL 2025) e os valores obtidos nesta reprodução:
+Métricas usadas nos scripts:
 
-| Modelo | Acurácia Sobredefesa (NotInject) | Acurácia Benigna (WildGuard/PINT) | Acurácia Maliciosa (PINT/BIPIA) | Média Global |
+* **Sobredefesa (Over-defense)**: média da acurácia benigna em `NotInject_one`, `NotInject_two` e `NotInject_three`.
+* **Benigna**: acurácia em `wildguard.json` (quando `datasets/PINT.json` existe, a avaliação original também incorpora PINT).
+* **Maliciosa**: média da acurácia em `BIPIA_text` e `BIPIA_code`.
+* **Média Global**: média aritmética das três métricas.
+
+O `datasets/PINT.json` **não** acompanha este repositório. Por isso, as avaliações atuais usam `WildGuard` para benignos e `BIPIA` para maliciosos; `Original/eval.py` e `Original/eval_hf.py` detectam a ausência de PINT e seguem sem ele.
+
+### 5.1 Tabela 1 — referência do artigo
+
+| Modelo | Sobredefesa (NotInject) | Benigna | Maliciosa | Média |
 | :--- | :---: | :---: | :---: | :---: |
-| **PromptGuard** (Meta) | 0.29% | 26.82% | **97.10%** | 41.40% |
-| **ProtectAIv2** | 57.23% | 86.20% | 48.60% | 64.01% |
-| **PIGuard (Paper Original)** | **87.32%** | **85.74%** | 77.39% | **83.48%** |
-| **PIGuard (Nossa Reprodução)** | *%* | *%* | *%* | *%* |
+| **Fmops** (DistilBERT) | 28,32% | 34,63% | 93,50% | 52,15% |
+| **Deepset** (DeBERTa-v3) | 29,50% | 34,06% | 91,50% | 51,68% |
+| **PromptGuard** (Meta) | 0,29% | 26,82% | **97,10%** | 41,40% |
+| **ProtectAIv2** | 57,23% | 86,20% | 48,60% | 64,01% |
+| **GPT-4o** | 86,73% | 90,78% | 79,10% | 85,53% |
+| **Llama-2-chat** | 76,40% | 61,03% | 31,09% | 56,17% |
+| **LlamaGuard3** | 99,71% | 95,18% | 28,28% | 74,39% |
+| **PIGuard (artigo)** | **87,32%** | **85,74%** | 77,39% | **83,48%** |
+| **PIGuard (`train_augmented_mof_rp` — melhor média)** | **96,17%** | **96,60%** | 54,67% | **82,48%** |
+| **PIGuard (`augmented_mof_corrected` — melhor equilíbrio)** | 93,51% | 79,81% | 70,67% | 81,33% |
+
+¹ Resultados obtidos na rodada oficial do repositório (`RESULTADOS_SEED42_MAX512`, com `seed=42` e `max_length=512`, para `train_augmented_mof_rp`) e na linhagem corrigida (`Corrections` / `Upgrade`, para `augmented_mof_corrected`), avaliados **sem `PINT.json`** (`WildGuard` para benignos e `BIPIA` para maliciosos). Sob exatamente esse mesmo protocolo sem PINT, os pesos oficiais publicados pelos autores (`PIGuard HF` / `leolee99/PIGuard`) alcançam **88,50%** (Sobredefesa), **76,11%** (Benigna), **68,33%** (Maliciosa) e **77,65%** (Média) — portanto nossos melhores modelos superam o checkpoint oficial em **+4,83 pp** (`train_augmented_mof_rp`) e **+3,69 pp** (`augmented_mof_corrected`), respectivamente. Os checkpoints não são versionados neste repositório; para gerar os relatórios localmente, execute `python Notebooks/second_train/eval_table1.py` (ou `Eval/validate_models_table1.py`).
+
+### 5.2 Melhores resultados da reprodução (mesmo protocolo sem PINT)
+
+Comparação direta das nossas melhores variantes frente ao checkpoint oficial publicado (`PIGuard HF`) e ao controle interno (`train_augmented_mof_original`) sob exatamente os mesmos datasets disponíveis publicamente (`NotInject_1/2/3`, `WildGuard`, `BIPIA` e benchmark externo `TensorTrust`):
+
+| Modelo | Origem / Rodada | Sobredefesa | Benigna | Maliciosa | Média Global | Δ vs. `PIGuard HF` | TensorTrust (OOD) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `PIGuard HF` (`leolee99/PIGuard`) | Referência oficial (sem PINT) | 88,50% | 76,11% | 68,33% | 77,65% | — | 84,93% |
+| `train_augmented_mof_original` | Controle (`SEED42_MAX512`) | 82,60% | 75,59% | **72,00%** | 76,73% | -0,92 pp | 89,92% |
+| `train_augmented_mof_semi_rp` | Semi-reprodução (`SEED42_MAX512`) | 91,45% | 85,38% | 66,67% | 81,16% | +3,52 pp | 88,76% |
+| `augmented_mof_corrected` | Base corrigida + MOF (`Corrections`) | 93,51% | 79,81% | 70,67% | 81,33% | +3,69 pp | **90,58%** |
+| **`train_augmented_mof_rp`** | **Reprodução pura (`SEED42_MAX512`)** | **96,17%** | **96,60%** | 54,67% | **82,48%** | **+4,83 pp** | 67,00% |
+
+* **Maior Média Global (82,48%) e menor sobredefesa (96,17%)**: `train_augmented_mof_rp` na rodada `RESULTADOS_SEED42_MAX512` (`+4,83 pp` acima do `PIGuard HF` e `+5,75 pp` acima do `train_augmented_mof_original`).
+* **Melhor equilíbrio entre detecção maliciosa, sobredefesa e generalização OOD**: `augmented_mof_corrected` (`81,33%` de Média Global, preservando `70,67%` em `BIPIA` e liderando o benchmark externo `TensorTrust` com `90,58%`), seguido de perto por `train_augmented_mof_semi_rp` (`81,16%` de média, `66,67%` em `BIPIA` e `88,76%` em `TensorTrust`).
+
+### 5.3 Tabela 2 — referência do artigo
+
+| Desenho | Sobredefesa | Benigna | Maliciosa | Média | Experimentos locais |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| Basic dataset training | 75,22% | 78,53% | 70,17% | 74,64% | `train_cleaned_original` |
+| + Data-centric augment | 64,31% | 81,36% | 75,95% | 73,87% | `train_augmented_original` / `train_augmented_rp` |
+| Basic + MOF scratch retrain | 89,38% | 84,73% | 71,57% | 81,89% | `train_clean_mof_original` / `train_clean_mof_semi_rp` / `train_clean_mof_rp` |
+| + Aug + MOF finetuning | 68,14% | 82,11% | 74,81% | 75,02% | `train_augmented_mof_finetuning_original` / `..._semi_rp` / `..._rp` |
+| + Aug + MOF scratch retrain | 87,32% | 85,74% | 77,39% | 83,48% | `train_augmented_mof_original` / `train_augmented_mof_semi_rp` / `train_augmented_mof_rp` |
+
+Os avaliadores também mantêm aliases para checkpoints de rodadas anteriores (`*_oficial` para `*_semi_rp` e nomes sem sufixo para `*_rp`). Os valores medidos localmente são gravados em `logs/MOFs/ablation_table_2_summary.csv` e `logs/MOFs/ablation_table_2_detailed_deltas.csv` ao executar `python Notebooks/second_train/eval.py`.
+
+### 5.4 Protocolo de avaliação
+
+A reprodução usa:
+
+* modelo base `microsoft/deberta-v3-base`;
+* seed `42`;
+* `max_length=512`;
+* `batch_size=32` para treino e avaliação;
+* 3 épocas, `learning_rate=2e-5`, `warmup=100`;
+* `argmax` da classe 1 para considerar uma entrada maliciosa;
+* benchmarks `NotInject_one`, `NotInject_two`, `NotInject_three`, `WildGuard`, `BIPIA_text`, `BIPIA_code`;
+* Tensor Trust como benchmark extra de hijacking e extraction.
+
+O validador `Eval/reproduction_validation.py` grava um manifesto com hashes dos datasets, checkpoint, implementação e versões de `torch`/`transformers`, além de seed e `max_length`, para que resultados antigos não sejam reutilizados silenciosamente.
 
 ---
 
 ## 🔍 6. Principais Desafios e Notas de Reprodutibilidade
 
-Durante o processo de reprodução, atente-se aos seguintes pontos críticos:
-1. **Estabilidade de Treinamento no DeBERTa-v3**: Modelos da família DeBERTa com *Electra-style pre-training* podem apresentar sensibilidade a sementes aleatórias (*random seeds*) e taxa de aprendizado. 
-2. **Dependência de LLM na Síntese MOF**: No paper, o `GPT-4o-mini` foi utilizado para produzir as 1.000 amostras com palavras de gatilho. Pequenas variações estocásticas nas respostas podem alterar sutilmente a composição do conjunto de mitigação.
-3. **Equilíbrio entre Injeção e Sobredefesa**: Como apontado no estudo de ablação (Tabela 2 do artigo), a mitigação excessiva de atalhos pode afetar a taxa de detecção maliciosa se o número de amostras MOF passar de 1.000.
+1. **Estabilidade de treinamento no DeBERTa-v3**: modelos da família DeBERTa com *Electra-style pre-training* podem apresentar sensibilidade a sementes aleatórias e taxa de aprendizado. O repositório fixa seed 42 e parâmetros conservadores, mas pequenas variações entre execuções são esperadas.
+2. **Dependência de LLM na síntese MOF**: o artigo usa `GPT-4o-mini` para produzir as amostras com palavras de gatilho. Variações estocásticas nas respostas podem alterar a composição do conjunto de mitigação. O pipeline usa temperatura 1.0 e registra respostas brutas/candidatos em cache.
+3. **Equilíbrio entre injeção e sobredefesa**: como apontado na ablação (Tabela 2 do artigo), a mitigação excessiva de atalhos pode afetar a detecção maliciosa se o número de amostras MOF passar de 1.000. O repositório usa 762 amostras MOF aprovadas, seguindo o protocolo do artigo.
+4. **Ausência de PINT neste checkout**: `datasets/PINT.json` não está versionado. Sem ele, as métricas de benignidade usam `WildGuard`; para comparar diretamente com os agregados do artigo, é necessário fornecer o PINT no formato esperado por `Original/eval.py`.
+5. **Custo e tempo**: a segunda fase executa nove treinamentos completos; a primeira fase executa três. Em uma A100, o fluxo completo leva horas e consome vários GB de checkpoints. Use `--experiment` para executar um cenário por vez e `--output-dir` para separar execuções.
+6. **Cache e retomada**: avaliações e token rechecks podem ser retomados a partir de resultados salvos. Se um dataset, checkpoint ou ambiente mudar, o cache é invalidado pelo manifesto; para forçar, use as flags `--force-*`.
+7. **Modelos remotos**: o primeiro uso de `microsoft/deberta-v3-base`, dos baselines e do Tensor Trust requer rede e cache do Hugging Face. O Prompt Guard exige aceite de acesso na conta. As linhas `Llama-2-chat` e `LlamaGuard3` da Tabela 1 usam identificadores OpenRouter históricos definidos em `Eval/validate_models_table1.py`.
 
 ---
 
-## 📄 7. Citação
+## 🧪 7. Solução de Problemas
+
+| Sintoma | Causa provável | Ação |
+| :--- | :--- | :--- |
+| `ModuleNotFoundError: torch` / `transformers` | dependências não instaladas | `python -m pip install -r requirements.txt` |
+| `checkpoint ausente` | treino não executado ou `--output-dir` diferente | rode a fase de treino correspondente ou informe `--output-dir` |
+| `API key not found` | geração/MOF sem credencial | exporte `OPENROUTER_API_KEY` ou crie `.env` na raiz |
+| `CUDA out of memory` | lote grande para a GPU | reduza `--batch-size` / `--eval-batch-size` |
+| resultados antigos reaparecem | cache compatível | use `--force-reevaluate`, `--force-rerun` ou `--force-retrain` |
+| avaliação pula OpenRouter | `--skip-openrouter` ou ausência de chave | informe a chave ou remova a flag |
+| PINT ausente | arquivo não versionado | as avaliações seguem com WildGuard/BIPIA; forneça `datasets/PINT.json` se quiser PINT |
+
+---
+
+## 📄 8. Citação
 
 ```bibtex
 @inproceedings{li2025piguard,
@@ -167,6 +470,7 @@ Durante o processo de reprodução, atente-se aos seguintes pontos críticos:
 }
 ```
 
+---
 
 ## 👥 Equipe
 
