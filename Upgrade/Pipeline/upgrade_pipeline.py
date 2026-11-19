@@ -277,7 +277,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     if not args.skip_step0:
         with pipeline_stage("Etapa 0: Novo MOF + held-out") as notes:
-            from Upgrade.step0_new_mof_and_heldout import run_step0
+            from Upgrade.Pipeline.step0_new_mof_and_heldout import run_step0
 
             report = run_step0(
                 trigger_path=trigger_report,

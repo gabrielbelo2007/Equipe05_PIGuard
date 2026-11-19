@@ -43,7 +43,7 @@ from Upgrade.topic1_rp_laya_evaluation import (
 )
 
 if TYPE_CHECKING:
-    from Upgrade.laya_english_cascade import LayaEnglishEngine
+    from Upgrade.Pipeline.laya_english_cascade import LayaEnglishEngine
 
 DEFAULT_UPGRADE_OUTPUT = REPO_ROOT / "Upgrade" / "outputs"
 

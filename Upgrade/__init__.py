@@ -8,7 +8,7 @@ Contém o pipeline completo em scripts Python executáveis:
 - Tópico 3: consolidação geral de métricas, intervalos de confiança, latência e gráficos.
 
 Entradas e saídas são resolvidas a partir da raiz do repositório; consulte
-``Upgrade/upgrade_pipeline.py`` para a execução completa.
+``Upgrade/Pipeline/upgrade_pipeline.py`` para a execução completa.
 """
 
 from __future__ import annotations

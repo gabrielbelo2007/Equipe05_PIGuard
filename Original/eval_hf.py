@@ -1,5 +1,12 @@
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 import os
+import sys
+from pathlib import Path
+
+_ORIG_DIR = str(Path(__file__).resolve().parent)
+if _ORIG_DIR not in sys.path:
+    sys.path.insert(0, _ORIG_DIR)
+
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, pipeline
 import torch
 import json
 from util import set_seed, get_logger

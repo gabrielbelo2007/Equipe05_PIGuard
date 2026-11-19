@@ -1,5 +1,12 @@
-from transformers import AutoTokenizer
 import os
+import sys
+from pathlib import Path
+
+_ORIG_DIR = str(Path(__file__).resolve().parent)
+if _ORIG_DIR not in sys.path:
+    sys.path.insert(0, _ORIG_DIR)
+
+from transformers import AutoTokenizer
 import torch
 import json
 from PIGuard import PIGuard
@@ -27,7 +34,8 @@ def acc_compute(model, target_set, target_class="benign", name="chat"):
                 # print(f"Prompt: {sample}\nLogits: {class_logits.cpu()}")
 
             del class_logits
-            torch.cuda.empty_cache()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
     acc = 1 - len(save_dict)/len(target_set)
     print(f"{name} set accuracy: {acc}")

@@ -1,4 +1,11 @@
 import os
+import sys
+from pathlib import Path
+
+_ORIG_DIR = str(Path(__file__).resolve().parent)
+if _ORIG_DIR not in sys.path:
+    sys.path.insert(0, _ORIG_DIR)
+
 import torch
 import numpy as np
 from transformers import AutoTokenizer, get_scheduler

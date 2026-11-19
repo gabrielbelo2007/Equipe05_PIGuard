@@ -46,7 +46,7 @@ from Upgrade.topic1_rp_laya_evaluation import (
 )
 
 if TYPE_CHECKING:
-    from Upgrade.laya_english_cascade import LayaEnglishEngine
+    from Upgrade.Pipeline.laya_english_cascade import LayaEnglishEngine
 
 CORRECTED_COMPARISON_SPECS: Tuple[Dict[str, Any], ...] = (
     {

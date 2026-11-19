@@ -30,7 +30,16 @@ import torch
 import torch.nn as nn
 
 # Permite executar este arquivo diretamente de qualquer diretório.
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+def _find_repo_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "datasets").is_dir() and (candidate / "Original").is_dir():
+            return candidate
+    raise RuntimeError(
+        f"Não foi possível localizar a raiz do repositório a partir de {start}."
+    )
+
+
+_REPO_ROOT = _find_repo_root(Path(__file__).resolve().parent)
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 

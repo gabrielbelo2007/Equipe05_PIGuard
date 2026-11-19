@@ -30,7 +30,16 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 # Permite executar este arquivo diretamente de qualquer diretório.
-REPO_ROOT = Path(__file__).resolve().parents[1]
+def _find_repo_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "datasets").is_dir() and (candidate / "Original").is_dir():
+            return candidate
+    raise RuntimeError(
+        f"Não foi possível localizar a raiz do repositório a partir de {start}."
+    )
+
+
+REPO_ROOT = _find_repo_root(Path(__file__).resolve().parent)
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

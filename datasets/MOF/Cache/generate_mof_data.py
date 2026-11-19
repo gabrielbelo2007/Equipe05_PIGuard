@@ -504,15 +504,18 @@ def main():
     parser.add_argument(
         "--training-output-dir",
         default=None,
-        help="Saída da primeira fase (padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs).",
+        help="Saída da primeira fase (padrão: <repo>/outputs).",
     )
     args = parser.parse_args()
 
     if not args.skip_gen:
         api_key = load_api_key()
-        output_dir = REPO_ROOT / Path(
-            args.training_output_dir or os.environ.get("PIGUARD_OUTPUT_DIR") or "outputs"
-        ).expanduser()
+        raw_output_dir = Path(args.training_output_dir or "outputs").expanduser()
+        output_dir = (
+            raw_output_dir.resolve()
+            if raw_output_dir.is_absolute()
+            else (REPO_ROOT / raw_output_dir).resolve()
+        )
         # Pipeline 1: MOF_semi_rp.json
         run_pipeline_for_dataset(
             dataset_name="mof_semi_rp",

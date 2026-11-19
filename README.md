@@ -47,12 +47,10 @@ Equipe05_PIGuard/
 │   ├── params.py                     # Argumentos de treino
 │   └── util.py                       # Seed, logger, acurácia e conversão PINT
 │
-├── Notebooks/                        # Conversões dos notebooks Colab para scripts
+├── Notebooks/                        # Scripts das etapas de treino e avaliação
 │   ├── first_train/
 │   │   ├── train.py                  # 3 treinos da primeira fase
-│   │   ├── eval.py                   # Avaliação dos 3 modelos da primeira fase
-│   │   ├── new_train.py              # Variante histórica com nomes legados
-│   │   └── new_eval.py               # Avaliação da variante histórica
+│   │   └── eval.py                   # Avaliação dos 3 modelos da primeira fase
 │   ├── second_train/
 │   │   ├── train.py                  # 9 treinos do estudo de ablação com MOF
 │   │   ├── eval.py                   # Reconstrução da Tabela 2
@@ -76,17 +74,16 @@ Equipe05_PIGuard/
 │       └── LLM_augmented_new.json    # Artefato histórico; não é lido pelo fluxo novo
 │
 ├── Upgrade/                          # Pipeline avançado: Novo MOF v2 + Laya English
-│   ├── upgrade_pipeline.py           # Orquestrador CLI completo (Etapa 0 + Tópicos 1–3)
-│   ├── step0_new_mof_and_heldout.py  # Pool do Novo MOF (v2) e separação held-out disjunta
-│   ├── laya_english_cascade.py       # Cascata seletiva Laya English + calibração + Bootstrap
+│   ├── __init__.py                   # Constantes, utilitários e carregamento dos benchmarks
+│   ├── Pipeline/
+│   │   ├── upgrade_pipeline.py       # Orquestrador CLI completo (Etapa 0 + Tópicos 1–3)
+│   │   ├── step0_new_mof_and_heldout.py  # Pool do Novo MOF (v2) e separação held-out disjunta
+│   │   └── laya_english_cascade.py   # Cascata seletiva Laya English + calibração + Bootstrap
 │   ├── topic1_rp_laya_evaluation.py  # Tópico 1: avaliação dos 5 modelos rp com Laya
 │   ├── topic2_corrected_new_mof.py   # Tópico 2: treino scratch base corrigida + MOF v2
 │   ├── topic3_consolidated_report.py # Tópico 3: consolidação de tabelas, ICs e gráficos
 │   ├── corrected_comparison.py       # Comparação unificada da linhagem corrected
-│   ├── run_corrected_comparison.py   # Runner CLI para corrected_comparison.py
-│   ├── test_upgrade_pipeline.py      # Suíte de testes unitários e integração do Upgrade
-│   ├── upgrade_pipeline.ipynb        # Notebook Colab/local do pipeline Upgrade
-│   └── corrected_comparison.ipynb    # Notebook Colab/local da comparação corrected
+│   └── run_corrected_comparison.py   # Runner CLI para corrected_comparison.py
 │
 └── datasets/                         # Dados versionados
     ├── train.json                    # Base de treino combinada (76.735 amostras)
@@ -101,13 +98,14 @@ Equipe05_PIGuard/
     ├── Extra_dataset/
     │   ├── tensor_trust_hijacking.json   # Tensor Trust hijacking (776 amostras)
     │   └── tensor_trust_extraction.json  # Tensor Trust extraction (570 amostras)
-    ├── clean_train_dataset.py        # Gera a base limpa a partir de train.json
     ├── Augmented/
+    │   ├── __init__.py               # Marca Augmented como pacote Python
     │   ├── train_cleaned_original.json    # Base limpa oficial (75.538 amostras)
     │   ├── train_augmented_original.json  # Base + aumento oficial (75.973 amostras)
     │   ├── train_augmented_rp.json        # Base + aumento reproduzido (75.973 amostras)
     │   └── Cache/
     │       ├── build_curated.py           # Seleciona demonstrações do aumento
+    │       ├── clean_train_dataset.py     # Gera a base limpa a partir de train.json
     │       ├── generate_data_rp.py        # Gerador de dados aumentados
     │       ├── LLM_augmented_rp.json      # 435 amostras aumentadas reproduzidas
     │       └── curated_prompt_injections.json  # 110 demonstrações
@@ -134,14 +132,14 @@ Equipe05_PIGuard/
 ## ⚙️ 3. Ambiente e Pré-requisitos
 
 ```text
-Ambiente usado como referência: Google Colab, NVIDIA A100 (80 GB de VRAM). Python 3.12
+Hardware usado como referência nos experimentos: NVIDIA A100 (80 GB de VRAM), Python 3.12
 ```
 
 ### Requisitos de Hardware
 
 * **GPU**: mínimo de 16 GB de VRAM (NVIDIA T4, RTX 3090, A100 ou equivalente) para treinar o `DeBERTa-v3-base` com `batch_size=32` e `max_length=512`. Os scripts também executam em CPU, mas o treinamento completo é muito mais lento.
 * **Espaço em disco**: cerca de 20 GB livres para datasets, cache do Hugging Face, checkpoints e resultados. Os dados versionados ocupam aproximadamente 370 MB; cada `best_model.pth` do DeBERTa-v3-base ocupa cerca de 440 MB.
-* **Rede**: o primeiro uso baixa `microsoft/deberta-v3-base`, os baselines da Tabela 1 e o Tensor Trust do Hugging Face. Modelos restritos, como o Prompt Guard, exigem acesso concedido na conta do Hugging Face.
+* **Rede**: o primeiro uso baixa `microsoft/deberta-v3-base`, os baselines da Tabela 1 e, no módulo `Upgrade/`, `convaiinnovations/laya` do Hugging Face (o Tensor Trust já vem salvo em `datasets/Extra_dataset/`, sendo baixado apenas se os arquivos estiverem ausentes). Modelos restritos, como o Prompt Guard, exigem acesso concedido na conta do Hugging Face.
 
 ### Instalação
 
@@ -216,9 +214,7 @@ python Notebooks/first_train/train.py --force-retrain
 
 Os checkpoints, logs e trigger words são gravados em `outputs/<experimento>/` (ou no diretório informado via `--output-dir`). Ao final, o token-wise recheck é executado para os modelos aumentados; use `--skip-token-recheck` para omiti-lo.
 
-O gerador MOF lê as trigger words da rodada reproduzida em `<saída>/train_augmented_rp/`. Se usou `--output-dir` no treino, passe o mesmo caminho ao gerador via `--training-output-dir`. A variante semi-reproduzida usa as trigger words oficiais de `datasets/MOF/Cache/`. Use `--skip_gen` para consolidar os conjuntos MOF já disponíveis localmente, sem credenciais.
-
-A variante histórica `Notebooks/first_train/new_train.py` mantém os nomes antigos (`train_augmented`, `train_new_augmented`, `train_cleaned`) e usa automaticamente os datasets atuais quando os arquivos legados não existem.
+Os scripts `datasets/Augmented/Cache/clean_train_dataset.py`, `datasets/Augmented/Cache/build_curated.py` e `datasets/Augmented/Cache/generate_data_rp.py` compõem a preparação/geração da base aumentada. O gerador MOF (`datasets/MOF/Cache/generate_mof_data.py`) lê as trigger words da rodada reproduzida em `<saída>/train_augmented_rp/`. Se usou `--output-dir` no treino, passe o mesmo caminho ao gerador via `--training-output-dir`. A variante semi-reproduzida usa as trigger words oficiais de `datasets/MOF/Cache/`. Use `--skip_gen` para consolidar os conjuntos MOF já disponíveis localmente, sem credenciais.
 
 ### 4.2 Segunda fase: ablação com MOF
 
@@ -326,20 +322,17 @@ O módulo `Upgrade/` estende a reprodução com a geração estratificada do Nov
 
 ```bash
 # Dry-run dos caminhos resolvidos
-python Upgrade/upgrade_pipeline.py --dry-run
+python Upgrade/Pipeline/upgrade_pipeline.py --dry-run
 python Upgrade/run_corrected_comparison.py --dry-run
 
 # Pipeline completo (requer OPENROUTER_API_KEY na Etapa 0 e ambiente de requirements.txt)
-python Upgrade/upgrade_pipeline.py
+python Upgrade/Pipeline/upgrade_pipeline.py
 
 # Comparação focada na linhagem corrected
 python Upgrade/run_corrected_comparison.py
-
-# Testes unitários e de integração do módulo Upgrade
-python -m unittest Upgrade/test_upgrade_pipeline.py -v
 ```
 
-Os artefatos são gravados por padrão em `Upgrade/outputs/`.
+Os artefatos são gravados por padrão em `Upgrade/outputs/`. As etapas também podem ser executadas individualmente via `Upgrade/Pipeline/step0_new_mof_and_heldout.py`, `Upgrade/topic1_rp_laya_evaluation.py`, `Upgrade/topic2_corrected_new_mof.py` e `Upgrade/topic3_consolidated_report.py`.
 
 Use `--rp-root` (ou `--drive-rp-root` nos scripts individuais do módulo) para indicar outra pasta com os checkpoints reproduzidos (`outputs/` por padrão), `--corrections-dir` se executou o `Corrections/` fora de `Corrections/outputs/` e `--output-dir` para alterar o destino de saída.
 
@@ -443,7 +436,7 @@ O validador `Eval/reproduction_validation.py` grava um manifesto com hashes dos 
 
 | Sintoma | Causa provável | Ação |
 | :--- | :--- | :--- |
-| `ModuleNotFoundError: torch` / `transformers` | dependências ausentes no Python usado pelo comando. Um alias pode fazer `python` apontar para o sistema mesmo com `(.venv)` no prompt | No Linux, use `./.venv/bin/python -m pip install -r requirements.txt` e execute o script com `./.venv/bin/python`. No Windows, use `.venv\Scripts\python.exe`. |
+| `ModuleNotFoundError: torch` / `transformers` | dependências ausentes no Python usado pelo comando. Um alias pode fazer `python` apontar para o sistema mesmo com `(.venv)` no prompt | No Linux/macOS, use `./.venv/bin/python -m pip install -r requirements.txt` e execute o script com `./.venv/bin/python`. No Windows, use `.venv\Scripts\python.exe`. |
 | `ImportError: pyarrow requires NumPy 2.0 or newer` | PyArrow incompatível com o NumPy do ambiente principal | Reinstale as dependências de `requirements.txt` no mesmo ambiente do treino. |
 | `checkpoint ausente` | treino não executado ou `--output-dir` diferente | rode a fase de treino correspondente ou informe `--output-dir` |
 | `API key not found` | geração/MOF sem credencial | exporte `OPENROUTER_API_KEY` ou crie `.env` na raiz |

@@ -42,7 +42,7 @@ from Upgrade import (
 )
 
 if TYPE_CHECKING:
-    from Upgrade.laya_english_cascade import LayaEnglishEngine
+    from Upgrade.Pipeline.laya_english_cascade import LayaEnglishEngine
 
 RP_MODELS: Tuple[str, ...] = (
     "train_augmented_rp",
@@ -117,7 +117,7 @@ def extract_or_load_laya_cache(
             return cached
 
     if laya_engine is None:
-        from Upgrade.laya_english_cascade import LayaEnglishEngine
+        from Upgrade.Pipeline.laya_english_cascade import LayaEnglishEngine
 
         engine = LayaEnglishEngine(
             window_max_len=window_max_len,
@@ -269,7 +269,7 @@ def evaluate_piguard_with_laya(
     predict_fn: Optional[Callable[[Sequence[str]], Tuple[List[int], List[float]]]] = None,
 ) -> Dict[str, Any]:
     """Avalia um modelo PIGuard em 3 modos: Puro, + Laya Não Calibrado e + Laya Calibrado."""
-    from Upgrade.laya_english_cascade import (
+    from Upgrade.Pipeline.laya_english_cascade import (
         calibrate_laya_on_heldout,
         cascade_predict,
         compute_cascade_latency_metrics,
