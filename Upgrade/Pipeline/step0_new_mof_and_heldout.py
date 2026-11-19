@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import os
 import random
 import re
 import sys
@@ -37,6 +36,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from Upgrade import (
     ALL_BENCHMARK_SETS,
+    benchmark_file_path,
     default_corrections_dir,
     load_api_key,
     normalize_text,
@@ -66,9 +66,7 @@ from Corrections.Upgrade_augmented.new_generate_data import (
 )
 
 MOF_REF_PATH = REPO_ROOT / "datasets" / "MOF" / "Cache" / "generate_mof_data.py"
-DEFAULT_UPGRADE_OUTPUT = Path(
-    os.environ.get("PIGUARD_UPGRADE_OUTPUT", REPO_ROOT / "Upgrade" / "outputs")
-)
+DEFAULT_UPGRADE_OUTPUT = REPO_ROOT / "Upgrade" / "outputs"
 
 
 def _load_mof_reference():
@@ -251,8 +249,7 @@ def load_forbidden_texts(
         ("train_cleaned_original.json", repo / "datasets" / "Augmented" / "train_cleaned_original.json"),
     ]
     for name in ALL_BENCHMARK_SETS:
-        fname = "wildguard.json" if name == "WildGuard" else f"{name}.json"
-        candidate_files.append((name, repo / "datasets" / fname))
+        candidate_files.append((name, benchmark_file_path(repo / "datasets", name)))
 
     if extra_paths:
         for p in extra_paths:
@@ -1140,11 +1137,7 @@ def main() -> None:
         default_corrections_dir(repo_root),
         repo_root=repo_root,
     )
-    upgrade_output = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo_root / "Upgrade" / "outputs",
-        repo_root=repo_root,
-    )
+    upgrade_output = repo_root / "Upgrade" / "outputs"
     output_dir = resolve_path(args.output_dir, upgrade_output / "step0", repo_root=repo_root)
     trigger_report = resolve_path(
         args.trigger_report,

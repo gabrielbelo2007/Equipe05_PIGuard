@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Comparação unificada da linhagem ``corrected`` do PIGuard.
 
-Este script é a versão executável do notebook ``corrected_comparison.ipynb``.
-Ele compara, sob o mesmo protocolo (PIGuard puro, Laya English não calibrado,
+Compara, sob o mesmo protocolo (PIGuard puro, Laya English não calibrado,
 Laya English calibrado, Tensor Trust, latência e IC 95% por Paired Bootstrap):
 
 1. ``augmented_corrected`` — base corrigida sem MOF;
@@ -25,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -70,7 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório raiz dos artefatos Upgrade (padrão: PIGUARD_UPGRADE_OUTPUT ou <repo>/Upgrade/outputs).",
+        help="Diretório raiz dos artefatos Upgrade (padrão: <repo>/Upgrade/outputs).",
     )
     parser.add_argument("--fpr-budget", type=float, default=0.01)
     parser.add_argument("--n-boot", type=int, default=2000)
@@ -100,12 +98,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     repo_root = resolve_path(args.repo_root, REPO_ROOT)
-    upgrade_default = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo_root / "Upgrade" / "outputs",
-        repo_root=repo_root,
+    output_dir = resolve_path(
+        args.output_dir, repo_root / "Upgrade" / "outputs", repo_root=repo_root
     )
-    output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
     corrections_dir = resolve_path(
         args.corrections_dir,
         default_corrections_dir(repo_root),

@@ -18,7 +18,6 @@ import argparse
 import gc
 import hashlib
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -53,10 +52,8 @@ RP_MODELS: Tuple[str, ...] = (
     "train_augmented_shortcut_rp",
 )
 
-DEFAULT_RP_ROOT = Path(os.environ.get("PIGUARD_RP_OUTPUT", REPO_ROOT / "outputs"))
-DEFAULT_UPGRADE_OUTPUT = Path(
-    os.environ.get("PIGUARD_UPGRADE_OUTPUT", REPO_ROOT / "Upgrade" / "outputs")
-)
+DEFAULT_RP_ROOT = REPO_ROOT / "outputs"
+DEFAULT_UPGRADE_OUTPUT = REPO_ROOT / "Upgrade" / "outputs"
 
 
 def _texts_digest(texts: Sequence[str]) -> str:
@@ -611,7 +608,7 @@ def main() -> None:
         default=None,
         help=(
             "Pasta com os checkpoints `*_rp` e `Gráficos/_cache` "
-            "(padrão: PIGUARD_RP_OUTPUT ou <repo>/outputs)."
+            "(padrão: <repo>/outputs)."
         ),
     )
     parser.add_argument(
@@ -622,7 +619,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório raiz dos artefatos Upgrade (padrão: PIGUARD_UPGRADE_OUTPUT ou <repo>/Upgrade/outputs).",
+        help="Diretório raiz dos artefatos Upgrade (padrão: <repo>/Upgrade/outputs).",
     )
     parser.add_argument("--repo-root", default=str(REPO_ROOT))
     parser.add_argument("--fpr-budget", type=float, default=0.01)
@@ -632,18 +629,12 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = resolve_path(args.repo_root, REPO_ROOT)
-    upgrade_default = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo_root / "Upgrade" / "outputs",
-        repo_root=repo_root,
+    output_dir = resolve_path(
+        args.output_dir, repo_root / "Upgrade" / "outputs", repo_root=repo_root
     )
-    output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
-    rp_default = resolve_path(
-        os.environ.get("PIGUARD_RP_OUTPUT") or os.environ.get("PIGUARD_OUTPUT_DIR"),
-        repo_root / "outputs",
-        repo_root=repo_root,
+    rp_root = resolve_path(
+        args.drive_rp_root, repo_root / "outputs", repo_root=repo_root
     )
-    rp_root = resolve_path(args.drive_rp_root, rp_default, repo_root=repo_root)
     heldout_path = resolve_path(
         args.heldout,
         output_dir / "step0" / "calibration_heldout.json",

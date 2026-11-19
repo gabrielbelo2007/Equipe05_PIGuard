@@ -1,8 +1,5 @@
 """PIGuard - Validação Comparativa Geral (Tabela 1) + variantes MOF.
 
-Conversão do notebook ``Notebooks/second_train/eval_table1.ipynb`` para script
-Python autônomo, sem comandos mágicos, ``display(Image)`` ou Google Colab.
-
 Uso:
     python Notebooks/second_train/eval_table1.py
     python Notebooks/second_train/eval_table1.py --skip-openrouter
@@ -50,9 +47,7 @@ else:
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 # Valores oficiais do artigo (Tabela 1).
 PAPER_REF = {
@@ -156,6 +151,7 @@ def run_validator(
         str(validator),
         "--dataset_root", str(dataset_root),
         "--output_dir", str(logs_dir),
+        "--checkpoint_root", str(checkpoint_root),
         "--batch_size", str(batch_size),
     ]
     if skip_openrouter:
@@ -167,7 +163,6 @@ def run_validator(
 
     print("\n$ " + " ".join(shlex.quote(part) for part in cmd), flush=True)
     with subprocess_environment([validator.parent]) as env:
-        env["PIGUARD_OUTPUT_DIR"] = str(checkpoint_root)
         if openrouter_key:
             env["OPENROUTER_API_KEY"] = openrouter_key
         result = subprocess.run(cmd, cwd=str(REPO_ROOT), env=env)
@@ -473,7 +468,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--dataset-root",

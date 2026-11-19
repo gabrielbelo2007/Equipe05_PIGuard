@@ -833,14 +833,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help=(
-            "Diretório de saída. Padrão: PIGUARD_OUTPUT_DIR ou "
-            "<repo>/Corrections/outputs."
-        ),
+        help="Diretório de saída (padrão: <repo>/Corrections/outputs).",
     )
     parser.add_argument(
         "--reference-output-root",
-        default=os.environ.get("PIGUARD_REFERENCE_OUTPUT"),
+        default=None,
         help="Diretório com checkpoints de referência (opcional).",
     )
     parser.add_argument(
@@ -893,7 +890,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     NTFY_TOPIC = args.ntfy_topic
 
     output = resolve_path(
-        args.output_dir or os.environ.get("PIGUARD_OUTPUT_DIR"),
+        args.output_dir,
         ROOT_DIR / "Corrections/outputs",
     )
     paths = {

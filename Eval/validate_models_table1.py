@@ -740,6 +740,12 @@ def main():
         default=None,
         help="Diretório para salvar os resultados (padrão: <repo>/logs/Table1).",
     )
+    parser.add_argument(
+        "--checkpoint_root",
+        type=str,
+        default=None,
+        help="Diretório raiz com os checkpoints locais (padrão: <repo>/outputs).",
+    )
     args = parser.parse_args()
 
     # Caminhos relativos são sempre ancorados na raiz do repositório, nunca no
@@ -776,7 +782,7 @@ def main():
         ("PIGuard (train_augmented_mof_semi_rp)", ["train_augmented_mof_semi_rp", "train_augmented_mof_oficial"]),
         ("PIGuard (train_augmented_mof_rp)", ["train_augmented_mof_rp", "train_augmented_mof"]),
     ]
-    checkpoint_root = resolve_path(os.environ.get("PIGUARD_OUTPUT_DIR"), ROOT_DIR / "outputs")
+    checkpoint_root = resolve_path(args.checkpoint_root, ROOT_DIR / "outputs")
     checkpoint_roots = [checkpoint_root]
     if checkpoint_root == ROOT_DIR / "outputs":
         checkpoint_roots.extend([ROOT_DIR / "checkpoints", ROOT_DIR])

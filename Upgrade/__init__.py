@@ -47,6 +47,12 @@ BENCHMARK_LABELS: Dict[str, int] = {
     "tensor_trust_extraction": 1,
 }
 
+BENCHMARK_FILENAMES: Dict[str, str] = {
+    "WildGuard": "wildguard.json",
+    "tensor_trust_hijacking": "Extra_dataset/tensor_trust_hijacking.json",
+    "tensor_trust_extraction": "Extra_dataset/tensor_trust_extraction.json",
+}
+
 
 def resolve_path(
     value: Path | str | None,
@@ -73,9 +79,6 @@ def default_corrections_dir(repo_root: Path | str | None = None) -> Path:
     e usa ``Corrections/`` como fallback para layouts antigos.
     """
     repo = Path(repo_root).resolve() if repo_root is not None else Path(__file__).resolve().parents[1]
-    env_dir = os.environ.get("PIGUARD_CORRECTIONS_DIR")
-    if env_dir:
-        return resolve_path(env_dir, repo / "Corrections" / "outputs", repo_root=repo)
     candidates = (repo / "Corrections" / "outputs", repo / "Corrections")
     for candidate in candidates:
         if (candidate / "data").is_dir() or (candidate / "augmented_corrected").is_dir():
@@ -164,6 +167,12 @@ def normalize_text(text: str) -> str:
     return " ".join(str(text).strip().lower().split())
 
 
+def benchmark_file_path(dataset_root: Path | str, name: str) -> Path:
+    """Resolve o caminho do arquivo JSON de um benchmark a partir de ``dataset_root``."""
+    relpath = BENCHMARK_FILENAMES.get(name, f"{name}.json")
+    return Path(dataset_root) / relpath
+
+
 def load_benchmarks(
     dataset_root: Path | str,
     *,
@@ -175,8 +184,7 @@ def load_benchmarks(
     names = ALL_BENCHMARK_SETS if include_tensortrust else PUBLIC_SETS
     benchmarks: Dict[str, Tuple[List[str], int]] = {}
     for name in names:
-        filename = "wildguard.json" if name == "WildGuard" else f"{name}.json"
-        path = root / filename
+        path = benchmark_file_path(root, name)
         data = read_json(path)
         if isinstance(data, list):
             texts = [str(row["prompt"]) for row in data]
@@ -220,6 +228,7 @@ __all__ = [
     "PUBLIC_SETS",
     "ALL_BENCHMARK_SETS",
     "BENCHMARK_LABELS",
+    "BENCHMARK_FILENAMES",
     "resolve_path",
     "default_corrections_dir",
     "load_api_key",
@@ -228,6 +237,7 @@ __all__ = [
     "write_csv",
     "sha256_file",
     "normalize_text",
+    "benchmark_file_path",
     "load_benchmarks",
     "aggregate_benchmark_scores",
 ]

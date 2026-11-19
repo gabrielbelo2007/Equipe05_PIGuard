@@ -11,27 +11,20 @@ Executa, em um único processo Python, as etapas:
    corrigida intacta + Novo MOF e avalia nas três modalidades;
 4. Tópico 3: consolida tabelas, intervalos de confiança, latência e gráficos.
 
-O script substitui o notebook ``upgrade_pipeline.ipynb`` e pode ser executado
-de qualquer diretório::
-
-    python /caminho/para/Equipe05_PIGuard/Upgrade/upgrade_pipeline.py
-    python Upgrade/upgrade_pipeline.py --skip-topic1 --skip-topic2
-    python Upgrade/upgrade_pipeline.py --dry-run
-
 Entradas padrão:
 
-* Corrections: ``Corrections/outputs`` (ou ``PIGUARD_CORRECTIONS_DIR``);
-* checkpoints ``rp``: ``outputs`` (ou ``PIGUARD_RP_OUTPUT``);
-* saída: ``Upgrade/outputs`` (ou ``PIGUARD_UPGRADE_OUTPUT``).
+* Corrections: ``Corrections/outputs``;
+* checkpoints ``rp``: ``outputs``;
+* saída: ``Upgrade/outputs``.
 
 A Etapa 0 e a geração de amostras exigem ``OPENROUTER_API_KEY`` ou
 ``OPENAI_API_KEY`` no ambiente ou em ``<repo>/.env``. As demais etapas usam
 apenas os artefatos locais.
 
-Requisitos adicionais deste fluxo: ``transformers>=4.48,<5`` (ModernBERT),
+Requisitos deste fluxo: ``transformers==4.48.3`` (ModernBERT),
 ``safetensors``, ``huggingface_hub`` e ``pandas``/``matplotlib`` para os
-relatórios. O restante do projeto pode continuar usando o ``requirements.txt``
-principal.
+relatórios — todos já incluídos no ``requirements.txt`` principal na raiz do
+repositório.
 """
 
 from __future__ import annotations
@@ -137,18 +130,8 @@ def pipeline_stage(name: str) -> Iterator[list[str]]:
 def _resolve_inputs(args: argparse.Namespace) -> dict[str, Path | str | None]:
     """Resolve todos os caminhos contra a raiz, independentemente do ``cwd``."""
     repo = resolve_path(args.repo_root, REPO_ROOT)
-    upgrade_default = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo / "Upgrade" / "outputs",
-        repo_root=repo,
-    )
-    rp_default = resolve_path(
-        os.environ.get("PIGUARD_RP_OUTPUT") or os.environ.get("PIGUARD_OUTPUT_DIR"),
-        repo / "outputs",
-        repo_root=repo,
-    )
-    output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo)
-    rp_root = resolve_path(args.rp_root, rp_default, repo_root=repo)
+    output_dir = resolve_path(args.output_dir, repo / "Upgrade" / "outputs", repo_root=repo)
+    rp_root = resolve_path(args.rp_root, repo / "outputs", repo_root=repo)
     corrections_dir = resolve_path(
         args.corrections_dir,
         default_corrections_dir(repo),

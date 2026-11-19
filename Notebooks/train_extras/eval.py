@@ -1,7 +1,5 @@
 """PIGuard - Avaliação do Estudo de Ablação: Shortcut Mitigation vs. MOF.
 
-Conversão do notebook ``Notebooks/train_extras/eval.ipynb`` para script Python
-
 Uso:
     python Notebooks/train_extras/eval.py
     python Notebooks/train_extras/eval.py --benchmark shortcut
@@ -60,9 +58,7 @@ else:
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 PAPER_SHORTCUT = {"overdefense": 86.73, "malicious": 65.53, "average": 76.13}
 PAPER_UNAUGMENTED = {"overdefense": 64.31, "malicious": 75.95, "average": 70.13}
@@ -633,9 +629,11 @@ def run_shortcut_section(
 
 def download_tensor_trust(dataset_root: Path) -> dict[str, list[dict[str, object]]]:
     dataset_root.mkdir(parents=True, exist_ok=True)
+    extra_dir = dataset_root / "Extra_dataset"
+    extra_dir.mkdir(parents=True, exist_ok=True)
     output_files = {
-        "hijacking": dataset_root / "tensor_trust_hijacking.json",
-        "extraction": dataset_root / "tensor_trust_extraction.json",
+        "hijacking": extra_dir / "tensor_trust_hijacking.json",
+        "extraction": extra_dir / "tensor_trust_extraction.json",
     }
     combined_path = dataset_root / "tensor_trust.json"
     converted: dict[str, list[dict[str, object]]] = {}
@@ -1008,7 +1006,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--dataset-root",

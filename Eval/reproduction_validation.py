@@ -97,8 +97,7 @@ def model_for_design(index, variant):
 class ValidationRun:
     def __init__(self, repo=None, output=None, legacy=None, batch_size=32, force=False, factory=None):
         self.repo = resolve_path(repo, ROOT_DIR)
-        default_output = os.environ.get('PIGUARD_OUTPUT_DIR') or 'outputs'
-        self.output = resolve_path(output, default_output, repo_root=self.repo)
+        self.output = resolve_path(output, 'outputs', repo_root=self.repo)
         self.root = self.output / 'Gráficos'
         self.legacy = resolve_path(legacy, self.repo, repo_root=self.repo) if legacy else None
         self.batch_size, self.force, self.factory = batch_size, force, factory
@@ -107,9 +106,13 @@ class ValidationRun:
         self.environment = {'torch': torch.__version__, 'transformers': transformers.__version__,
                             'python': platform.python_version(), 'device': self.device}
         self.data = {}; self.hashes = {}
+        benchmark_files = {
+            'WildGuard': 'wildguard.json',
+            'tensor_trust_hijacking': 'Extra_dataset/tensor_trust_hijacking.json',
+            'tensor_trust_extraction': 'Extra_dataset/tensor_trust_extraction.json',
+        }
         for name in PUBLIC_SETS + ['tensor_trust_hijacking', 'tensor_trust_extraction']:
-            file = 'wildguard' if name == 'WildGuard' else name
-            path = self.repo / 'datasets' / (file + '.json')
+            path = self.repo / 'datasets' / benchmark_files.get(name, f'{name}.json')
             data = read(path)
             texts = [x['prompt'] for x in data] if isinstance(data, list) else [x for group in data.values() for x in group]
             if not texts: raise ValueError(f'Benchmark vazio: {path}')
@@ -511,7 +514,7 @@ def build_parser():
     )
     parser.add_argument(
         '--output', default=None,
-        help='Diretório de checkpoints e resultados (padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs).',
+        help='Diretório de checkpoints e resultados (padrão: <repo>/outputs).',
     )
     parser.add_argument(
         '--legacy', default=None,

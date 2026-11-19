@@ -1,7 +1,5 @@
 """PIGuard - Estudo de Ablação: Shortcut Mitigation vs. MOF.
 
-Conversão do notebook ``Notebooks/train_extras/train.ipynb`` para script Python
-
 Uso:
     python Notebooks/train_extras/train.py
     python Notebooks/train_extras/train.py --experiment train_augmented_shortcut_rp
@@ -13,7 +11,6 @@ grupos (z, y), sem MOF):
    words extraídas do modelo aumentado original.
 2. ``train_augmented_shortcut_rp``: dataset aumentado reproduzido + trigger
    words extraídas do modelo aumentado reproduzido.
-
 """
 
 from __future__ import annotations
@@ -33,9 +30,7 @@ from typing import Iterable, Iterator, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 
 @dataclass(frozen=True)
@@ -431,7 +426,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--force-retrain",

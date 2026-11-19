@@ -1,7 +1,5 @@
 """PIGuard - Validação Comparativa dos Modelos e Análise de Over-Defense.
 
-Conversão do notebook ``Notebooks/first_train/eval.ipynb`` para script Python
-
 Uso:
     python Notebooks/first_train/eval.py
     python Notebooks/first_train/eval.py --output-dir outputs/eval_first_train
@@ -52,9 +50,7 @@ else:
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 PAPER_CLEAN = {
     "NotInject_overall_acc": 0.7522,
@@ -501,7 +497,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--dataset-root",

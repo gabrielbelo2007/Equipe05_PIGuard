@@ -17,7 +17,6 @@ todos os novos artefatos isoladamente em `Upgrade/corrected_only/`.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -681,7 +680,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório raiz dos artefatos Upgrade (padrão: PIGUARD_UPGRADE_OUTPUT ou <repo>/Upgrade/outputs).",
+        help="Diretório raiz dos artefatos Upgrade (padrão: <repo>/Upgrade/outputs).",
     )
     parser.add_argument("--repo-root", default=str(REPO_ROOT))
     parser.add_argument("--fpr-budget", type=float, default=0.01)
@@ -692,12 +691,9 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = resolve_path(args.repo_root, REPO_ROOT)
-    upgrade_default = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo_root / "Upgrade" / "outputs",
-        repo_root=repo_root,
+    output_dir = resolve_path(
+        args.output_dir, repo_root / "Upgrade" / "outputs", repo_root=repo_root
     )
-    output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
     corrections_dir = resolve_path(
         args.corrections_dir,
         default_corrections_dir(repo_root),

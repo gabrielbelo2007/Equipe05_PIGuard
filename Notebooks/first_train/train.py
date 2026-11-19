@@ -1,15 +1,12 @@
 """PIGuard - Treinamento de Modelos (GPU/CPU).
 
-Conversão do notebook ``Notebooks/first_train/train.ipynb`` para script Python
-
 Uso:
     python Notebooks/first_train/train.py
     python Notebooks/first_train/train.py --experiment train_augmented_rp
     python Notebooks/first_train/train.py --force-retrain
 
 Os artefatos (checkpoints, logs e trigger words) são gravados em ``outputs/`` na
-raiz do projeto. Esse destino pode ser alterado com ``--output-dir`` ou com a
-variável de ambiente ``PIGUARD_OUTPUT_DIR``.
+raiz do projeto. Esse destino pode ser alterado com ``--output-dir``.
 
 Três cenários de treinamento e ablação comparativa:
 1. ``train_augmented_original``: dataset aumentado oficial do artigo.
@@ -37,9 +34,7 @@ from typing import Iterable, Iterator, Sequence
 SCRIPT_DIR = Path(__file__).resolve().parent
 # Notebooks/<subpasta>/<script>.py -> raiz do repositório.
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 EXPERIMENT_NAMES = (
     "train_augmented_original",
@@ -281,7 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--force-retrain",

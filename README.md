@@ -85,7 +85,6 @@ Equipe05_PIGuard/
 │   ├── corrected_comparison.py       # Comparação unificada da linhagem corrected
 │   ├── run_corrected_comparison.py   # Runner CLI para corrected_comparison.py
 │   ├── test_upgrade_pipeline.py      # Suíte de testes unitários e integração do Upgrade
-│   ├── requirements.txt              # Requisitos específicos do Upgrade (transformers>=4.48,<5)
 │   ├── upgrade_pipeline.ipynb        # Notebook Colab/local do pipeline Upgrade
 │   └── corrected_comparison.ipynb    # Notebook Colab/local da comparação corrected
 │
@@ -99,8 +98,9 @@ Equipe05_PIGuard/
     ├── BIPIA_text.json               # BIPIA texto: 15 grupos × 5 (75 amostras)
     ├── BIPIA_code.json               # BIPIA código: 10 grupos × 5 (50 amostras)
     ├── tensor_trust.json             # Tensor Trust combinado (1.346 amostras)
-    ├── tensor_trust_hijacking.json   # Tensor Trust hijacking (776 amostras)
-    ├── tensor_trust_extraction.json  # Tensor Trust extraction (570 amostras)
+    ├── Extra_dataset/
+    │   ├── tensor_trust_hijacking.json   # Tensor Trust hijacking (776 amostras)
+    │   └── tensor_trust_extraction.json  # Tensor Trust extraction (570 amostras)
     ├── clean_train_dataset.py        # Gera a base limpa a partir de train.json
     ├── Augmented/
     │   ├── train_cleaned_original.json    # Base limpa oficial (75.538 amostras)
@@ -127,7 +127,7 @@ Equipe05_PIGuard/
             └── trigger_words_train_augmented_semi_rp.json # 427 tokens
 ```
 
-> **Artefatos gerados:** `outputs/`, `checkpoints/`, `logs/`, `Eval/ShortcutMitigation/` e `Eval/TensorTrust/` são criados em tempo de execução. Checkpoints e modelos não são versionados (`.gitignore`); os resultados numéricos da reprodução também não acompanham este checkout.
+> **Artefatos gerados:** `outputs/`, `Corrections/outputs/`, `Upgrade/outputs/`, `checkpoints/`, `logs/`, `Eval/ShortcutMitigation/` e `Eval/TensorTrust/` são criados em tempo de execução. Checkpoints e modelos não são versionados (`.gitignore`); os resultados numéricos da reprodução também não acompanham este checkout.
 
 ---
 
@@ -157,21 +157,16 @@ Ambiente usado como referência: Google Colab, NVIDIA A100 (80 GB de VRAM). Pyth
    source .venv/bin/activate  # No Windows: .venv\Scripts\activate
    ```
 
-3. Instale as dependências:
+3. Instale as dependências (único arquivo para todo o repositório, incluindo `Upgrade/` com `ModernBERT-large` via `transformers==4.48.3`):
    ```bash
    python -m pip install --upgrade pip
    python -m pip install -r requirements.txt
    ```
 
-   Para executar o fluxo `Upgrade/` (que utiliza `ModernBERT-large` via Laya English e requer `transformers>=4.48.0,<5.0.0`), instale em um ambiente separado:
-   ```bash
-   python -m pip install -r Upgrade/requirements.txt
-   ```
-
-O `requirements.txt` inclui todas as dependências do fluxo principal (`Original/`, `Notebooks/`, `Eval/` e `Corrections/`). Para instalar manualmente apenas o conjunto mínimo desse fluxo em Python 3.10 a 3.12:
+O `requirements.txt` inclui todas as dependências de todos os fluxos (`Original/`, `Notebooks/`, `Eval/`, `Corrections/` e `Upgrade/`). Para instalar manualmente apenas o conjunto mínimo em Python 3.10 a 3.12:
 
 ```bash
-python -m pip install torch==2.4.0 transformers==4.44.0 datasets==2.21.0 pyarrow==17.0.0 \
+python -m pip install torch==2.4.0 transformers==4.48.3 datasets==2.21.0 pyarrow==17.0.0 \
     sentencepiece==0.2.0 protobuf==4.25.4 tiktoken==0.7.0 PyYAML==6.0.2 \
     numpy==1.26.3 pandas==2.2.2 matplotlib==3.9.2 tqdm==4.66.5 \
     scikit-learn==1.5.1
@@ -219,7 +214,7 @@ python Notebooks/first_train/train.py --experiment train_augmented_original
 python Notebooks/first_train/train.py --force-retrain
 ```
 
-Os checkpoints, logs e trigger words são gravados em `outputs/<experimento>/` (ou em `PIGUARD_OUTPUT_DIR`). Ao final, o token-wise recheck é executado para os modelos aumentados; use `--skip-token-recheck` para omiti-lo.
+Os checkpoints, logs e trigger words são gravados em `outputs/<experimento>/` (ou no diretório informado via `--output-dir`). Ao final, o token-wise recheck é executado para os modelos aumentados; use `--skip-token-recheck` para omiti-lo.
 
 O gerador MOF lê as trigger words da rodada reproduzida em `<saída>/train_augmented_rp/`. Se usou `--output-dir` no treino, passe o mesmo caminho ao gerador via `--training-output-dir`. A variante semi-reproduzida usa as trigger words oficiais de `datasets/MOF/Cache/`. Use `--skip_gen` para consolidar os conjuntos MOF já disponíveis localmente, sem credenciais.
 
@@ -303,7 +298,7 @@ python Corrections/corrections.py --skip-hf
 python Corrections/corrections.py --output-dir /caminho/para/saida
 ```
 
-Por padrão, os artefatos ficam em `Corrections/outputs/`. Também é possível usar `PIGUARD_OUTPUT_DIR` e `--reference-output-root` para reaproveitar checkpoints de uma execução anterior.
+Por padrão, os artefatos ficam em `Corrections/outputs/` (alterável via `--output-dir`). Também é possível usar `--reference-output-root` para reaproveitar checkpoints de uma execução anterior.
 
 Scripts auxiliares:
 
@@ -334,7 +329,7 @@ O módulo `Upgrade/` estende a reprodução com a geração estratificada do Nov
 python Upgrade/upgrade_pipeline.py --dry-run
 python Upgrade/run_corrected_comparison.py --dry-run
 
-# Pipeline completo (requer OPENROUTER_API_KEY na Etapa 0 e ambiente Upgrade/requirements.txt)
+# Pipeline completo (requer OPENROUTER_API_KEY na Etapa 0 e ambiente de requirements.txt)
 python Upgrade/upgrade_pipeline.py
 
 # Comparação focada na linhagem corrected
@@ -344,16 +339,17 @@ python Upgrade/run_corrected_comparison.py
 python -m unittest Upgrade/test_upgrade_pipeline.py -v
 ```
 
-Os artefatos são gravados por padrão em `Upgrade/outputs/` (substituível por `PIGUARD_UPGRADE_OUTPUT` ou `--output-dir`).
+Os artefatos são gravados por padrão em `Upgrade/outputs/`.
 
-Use `PIGUARD_RP_OUTPUT` ou `PIGUARD_OUTPUT_DIR` para indicar a saída dos treinos reproduzidos. Se executou o Corrections em uma pasta personalizada, indique-a com `PIGUARD_CORRECTIONS_DIR`. Para abrir os notebooks locais a partir de outra pasta, defina `PIGUARD_REPO_ROOT` com o caminho do checkout.
+Use `--rp-root` (ou `--drive-rp-root` nos scripts individuais do módulo) para indicar outra pasta com os checkpoints reproduzidos (`outputs/` por padrão), `--corrections-dir` se executou o `Corrections/` fora de `Corrections/outputs/` e `--output-dir` para alterar o destino de saída.
 
 ### 4.7 Diretórios de saída e cache
 
-* `outputs/` é o destino padrão dos checkpoints, trigger words e avaliações dos `Notebooks/` e de `Eval/`.
-* `PIGUARD_OUTPUT_DIR` substitui esse destino; `--output-dir` tem precedência quando informado.
+* `outputs/` (na raiz do projeto) é o destino padrão dos checkpoints, trigger words e relatórios de `Notebooks/` e de `Eval/reproduction_validation.py`.
+* `Corrections/outputs/` e `Upgrade/outputs/` são os destinos padrão dos pipelines `Corrections/` e `Upgrade/`, respectivamente.
 * `logs/Table1/` e `logs/MOFs/` guardam resultados e gráficos das avaliações de Tabela 1 e Tabela 2.
 * `Eval/ShortcutMitigation/` e `Eval/TensorTrust/` guardam as avaliações extras.
+* Todos os scripts permitem sobrescrever o destino padrão diretamente via CLI (`--output-dir`, `--output_dir` em `Eval/validate_models_table1.py` ou `--output` em `Eval/reproduction_validation.py`).
 * As avaliações reutilizam resultados compatíveis. Para forçar recálculo, use `--force-reevaluate` ou `--force-rerun`; para retreinar, use `--force-retrain`.
 * Os manifestos incluem seed, `max_length`, hash dos datasets, hash do checkpoint e versões do ambiente, permitindo verificar a compatibilidade do cache.
 

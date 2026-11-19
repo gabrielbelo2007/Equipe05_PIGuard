@@ -12,7 +12,6 @@ Etapas:
 from __future__ import annotations
 
 import argparse
-import os
 import platform
 import shutil
 import subprocess
@@ -46,9 +45,7 @@ from Upgrade.topic1_rp_laya_evaluation import (
 if TYPE_CHECKING:
     from Upgrade.laya_english_cascade import LayaEnglishEngine
 
-DEFAULT_UPGRADE_OUTPUT = Path(
-    os.environ.get("PIGUARD_UPGRADE_OUTPUT", REPO_ROOT / "Upgrade" / "outputs")
-)
+DEFAULT_UPGRADE_OUTPUT = REPO_ROOT / "Upgrade" / "outputs"
 
 
 def build_combined_training_dataset(
@@ -426,7 +423,7 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório raiz dos artefatos Upgrade (padrão: PIGUARD_UPGRADE_OUTPUT ou <repo>/Upgrade/outputs).",
+        help="Diretório raiz dos artefatos Upgrade (padrão: <repo>/Upgrade/outputs).",
     )
     parser.add_argument(
         "--corrections-dir",
@@ -449,12 +446,9 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = resolve_path(args.repo_root, REPO_ROOT)
-    upgrade_default = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo_root / "Upgrade" / "outputs",
-        repo_root=repo_root,
+    output_dir = resolve_path(
+        args.output_dir, repo_root / "Upgrade" / "outputs", repo_root=repo_root
     )
-    output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
     corrections_dir = resolve_path(
         args.corrections_dir,
         default_corrections_dir(repo_root),

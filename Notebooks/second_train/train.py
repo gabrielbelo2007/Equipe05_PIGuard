@@ -1,8 +1,5 @@
 """PIGuard - Estudo de Ablação com MOF (Fase 2: Scratch Retrain & Finetuning).
 
-Conversão do notebook ``Notebooks/second_train/train.ipynb`` para script Python
-autônomo, sem comandos mágicos e sem dependência do Google Colab.
-
 Uso:
     python Notebooks/second_train/train.py
     python Notebooks/second_train/train.py --experiment train_clean_mof_rp
@@ -31,9 +28,7 @@ from typing import Iterable, Iterator, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 
 @dataclass(frozen=True)
@@ -310,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--force-retrain",

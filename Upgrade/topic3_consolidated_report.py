@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
@@ -33,9 +32,7 @@ from Upgrade import (
     write_json,
 )
 
-DEFAULT_UPGRADE_OUTPUT = Path(
-    os.environ.get("PIGUARD_UPGRADE_OUTPUT", REPO_ROOT / "Upgrade" / "outputs")
-)
+DEFAULT_UPGRADE_OUTPUT = REPO_ROOT / "Upgrade" / "outputs"
 
 
 def _load_rp_cache_reference(drive_rp_root: Optional[Path | str], name: str) -> Optional[Dict[str, Any]]:
@@ -621,12 +618,12 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório raiz dos artefatos Upgrade (padrão: PIGUARD_UPGRADE_OUTPUT ou <repo>/Upgrade/outputs).",
+        help="Diretório raiz dos artefatos Upgrade (padrão: <repo>/Upgrade/outputs).",
     )
     parser.add_argument(
         "--drive-rp-root",
         default=None,
-        help="Caminho para a pasta com os checkpoints rp (padrão: PIGUARD_RP_OUTPUT ou <repo>/outputs).",
+        help="Caminho para a pasta com os checkpoints rp (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--corrections-dir",
@@ -637,18 +634,12 @@ def main() -> None:
     args = parser.parse_args()
 
     repo_root = resolve_path(args.repo_root, REPO_ROOT)
-    upgrade_default = resolve_path(
-        os.environ.get("PIGUARD_UPGRADE_OUTPUT"),
-        repo_root / "Upgrade" / "outputs",
-        repo_root=repo_root,
+    output_dir = resolve_path(
+        args.output_dir, repo_root / "Upgrade" / "outputs", repo_root=repo_root
     )
-    output_dir = resolve_path(args.output_dir, upgrade_default, repo_root=repo_root)
-    rp_default = resolve_path(
-        os.environ.get("PIGUARD_RP_OUTPUT") or os.environ.get("PIGUARD_OUTPUT_DIR"),
-        repo_root / "outputs",
-        repo_root=repo_root,
+    drive_rp_root = resolve_path(
+        args.drive_rp_root, repo_root / "outputs", repo_root=repo_root
     )
-    drive_rp_root = resolve_path(args.drive_rp_root, rp_default, repo_root=repo_root)
     corrections_dir = resolve_path(
         args.corrections_dir,
         default_corrections_dir(repo_root),

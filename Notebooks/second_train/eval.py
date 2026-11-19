@@ -1,8 +1,5 @@
 """PIGuard - Avaliação e Reprodução da Tabela de Ablação com MOF (Tabela 2).
 
-Conversão do notebook ``Notebooks/second_train/eval.ipynb`` para script Python
-autônomo
-
 O script avalia os modelos do estudo de ablação e reconstrói a Tabela 2 do
 artigo PIGuard, comparando as 3 vertentes (Original, Semi-Reprodução e
 Reproduzida). Resultados, tabelas e gráficos são gravados em ``logs/MOFs`` e no
@@ -46,9 +43,7 @@ else:
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-DEFAULT_OUTPUT_DIR = Path(
-    os.environ.get("PIGUARD_OUTPUT_DIR", REPO_ROOT / "outputs")
-).expanduser()
+DEFAULT_OUTPUT_DIR = (REPO_ROOT / "outputs").resolve()
 
 PAPER_TABLE_2 = [
     {
@@ -859,7 +854,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Diretório de artefatos. Padrão: PIGUARD_OUTPUT_DIR ou <repo>/outputs.",
+        help="Diretório de artefatos (padrão: <repo>/outputs).",
     )
     parser.add_argument(
         "--dataset-root",

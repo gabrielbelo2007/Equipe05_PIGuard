@@ -1,7 +1,7 @@
-# Dependências base do pipeline principal (Original, Notebooks, Eval e Corrections).
-# Para o pipeline Upgrade (ModernBERT / Laya English), utilize Upgrade/requirements.txt.
+# Dependências unificadas do projeto (Original, Notebooks, Eval, Corrections e Upgrade).
+# transformers==4.48.3 atende tanto aos fluxos base quanto ao ModernBERT-large (Laya English).
 torch==2.4.0
-transformers==4.44.0
+transformers==4.48.3
 datasets==2.21.0
 pyarrow==17.0.0
 accelerate==0.33.0
